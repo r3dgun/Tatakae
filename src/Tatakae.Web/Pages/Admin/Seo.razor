@@ -1,0 +1,125 @@
+@page "/admin/seo"
+@layout AdminLayout
+@attribute [Authorize(Policy = PermissionNames.AdminSeoView)]
+@inject IAdminApiClient Admin
+@inject IConfiguration Configuration
+
+<HeadContent><meta name="robots" content="noindex,nofollow" /></HeadContent>
+<section class="admin-page">
+    <div class="admin-page-head">
+        <div><span>SEO CENTER</span><h1>مرکز سئو فروشگاه</h1></div>
+        <div class="admin-actions-inline">
+            <a class="admin-action" href="@SitemapUrl" target="_blank">مشاهده Sitemap</a>
+            <a class="admin-action ghost" href="@RobotsUrl" target="_blank">مشاهده Robots</a>
+            <a class="admin-action ghost" href="@LlmsUrl" target="_blank">مشاهده llms.txt</a>
+            <a class="admin-action ghost" href="@AiCatalogUrl" target="_blank">کاتالوگ AI</a>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="admin-empty">در حال بررسی سئو...</div>
+    }
+    else if (!string.IsNullOrWhiteSpace(error))
+    {
+        <div class="admin-error">@error</div>
+    }
+    else if (audit is not null)
+    {
+        <div class="admin-kpi-grid seo-kpi-grid">
+            <article><span>امتیاز کلی</span><strong>@audit.Score</strong><small>از ۱۰۰</small></article>
+            <article><span>URL در Sitemap</span><strong>@audit.UrlCount</strong><small>صفحه قابل کشف</small></article>
+            <article><span>خطا</span><strong>@audit.ErrorCount</strong><small>نیازمند اصلاح فوری</small></article>
+            <article><span>هشدار</span><strong>@audit.WarningCount</strong><small>بهینه‌سازی پیشنهادی</small></article>
+        </div>
+
+        <div class="seo-grid">
+            <article class="seo-card"><h3>Sitemap</h3><p>صفحات اصلی، دسته‌بندی‌های فعال و محصولات منتشرشده با lastmod، changefreq و priority خروجی می‌گیرند.</p></article>
+            <article class="seo-card"><h3>Robots</h3><p>پنل ادمین، حساب کاربری، پرداخت، چک‌اوت، ورود و ثبت‌نام noindex/nofollow هستند.</p></article>
+            <article class="seo-card"><h3>Open Graph</h3><p>عنوان، توضیح و تصویر محصول برای اشتراک‌گذاری آماده است.</p></article>
+            <article class="seo-card"><h3>Schema</h3><p>محصول، واریانت، امتیاز واقعی، پرسش‌وپاسخ، دسته‌بندی، فروشگاه و breadcrumb با JSON-LD پشتیبانی می‌شوند.</p></article>
+            <article class="seo-card"><h3>AI Discovery</h3><p>llms.txt و کاتالوگ JSON فقط از محصولات، دسته‌ها و قوانین عمومی و منتشرشده ساخته می‌شوند.</p></article>
+            <article class="seo-card"><h3>AI Crawlers</h3><p>OAI-SearchBot، ChatGPT-User و GPTBot در robots.txt سیاست مستقل دارند.</p></article>
+        </div>
+
+        <section class="admin-panel">
+            <div class="admin-panel-head"><h2>صفحات با اولویت اصلاح</h2><p>صفحه‌هایی که امتیاز پایین‌تر دارند بالاتر آمده‌اند.</p></div>
+            <div class="admin-table-wrap">
+                <table class="admin-table">
+                    <thead><tr><th>URL</th><th>امتیاز</th><th>موارد</th></tr></thead>
+                    <tbody>
+                        @foreach (var auditPage in audit.Pages.Take(12))
+                        {
+                            <tr>
+                                <td><a href="@auditPage.Url" target="_blank">@auditPage.Url</a></td>
+                                <td><strong>@auditPage.Score</strong></td>
+                                <td>
+                                    @if (auditPage.Items.Count == 0)
+                                    {
+                                        <span class="status-chip success">بدون مشکل</span>
+                                    }
+                                    else
+                                    {
+                                        <ul class="seo-audit-list">
+                                            @foreach (var item in auditPage.Items.Take(3))
+                                            {
+                                                <li class="@item.Level.ToLowerInvariant()"><b>@item.Code</b> — @item.Message</li>
+                                            }
+                                        </ul>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="admin-panel">
+            <div class="admin-panel-head"><h2>قوانین ایندکس مسیرها</h2><p>این جدول مشخص می‌کند کدام مسیرها عمومی هستند و کدام مسیرها باید از گوگل دور بمانند.</p></div>
+            <div class="admin-table-wrap">
+                <table class="admin-table">
+                    <thead><tr><th>مسیر</th><th>Robots</th><th>وضعیت</th><th>دلیل</th></tr></thead>
+                    <tbody>
+                        @foreach (var route in audit.RoutePolicies)
+                        {
+                            <tr>
+                                <td><code>@route.Path</code></td>
+                                <td>@route.Robots</td>
+                                <td><span class="status-chip @(route.IsPublic ? "success" : "danger")">@(route.IsPublic ? "عمومی" : "خصوصی")</span></td>
+                                <td>@route.Reason</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+</section>
+
+@code {
+    private bool loading = true;
+    private string? error;
+    private string ApiBaseUrl => (Configuration["ApiBaseUrl"] ?? "https://localhost:7075/").TrimEnd('/') + "/";
+    private string SitemapUrl => new Uri(new Uri(ApiBaseUrl), "sitemap.xml").ToString();
+    private string RobotsUrl => new Uri(new Uri(ApiBaseUrl), "robots.txt").ToString();
+    private string LlmsUrl => new Uri(new Uri(ApiBaseUrl), "llms.txt").ToString();
+    private string AiCatalogUrl => new Uri(new Uri(ApiBaseUrl), "ai/catalog.json").ToString();
+    private SeoAuditSummaryDto? audit;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            audit = (await Admin.SeoAuditAsync()).RequireUiData();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+}

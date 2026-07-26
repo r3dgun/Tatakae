@@ -1,0 +1,210 @@
+@page "/admin/categories"
+@layout AdminLayout
+@attribute [Authorize(Policy = PermissionNames.AdminCategoriesView)]
+@inject IAdminApiClient Admin
+
+<PageTitle>دسته‌بندی‌ها | Tatakae</PageTitle>
+
+<section class="admin-page">
+    <div class="admin-head">
+        <div>
+            <p class="admin-kicker">CATEGORIES / SEO</p>
+            <h1>دسته‌بندی محصولات</h1>
+            <p>برای هر دسته، slug فارسی یا انگلیسی، تصویر، ترتیب نمایش، canonical و متادیتای مستقل تعریف کنید.</p>
+        </div>
+    </div>
+
+    <div class="admin-two-column">
+        <section class="admin-card">
+            <h2>@(editingId is null ? "دسته‌بندی جدید" : "ویرایش دسته‌بندی")</h2>
+            <EditForm Model="form" OnValidSubmit="Save">
+                <RecursiveDataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="editor-section">
+                    <label>نام<InputText @bind-Value="form.Name" /></label>
+                    <label>Slug فارسی / انگلیسی
+                        <div class="admin-inline-field">
+                            <InputText dir="auto" @bind-Value="form.Slug" />
+                            <button type="button" class="small-button" @onclick="GenerateSlug">ساخت از نام</button>
+                        </div>
+                        <small dir="ltr">/category/@SeoSlug.Normalize(form.Slug)</small>
+                    </label>
+                    <label>URL تصویر<InputText dir="ltr" @bind-Value="form.CoverImageUrl" /></label>
+                    <label>توضیح<InputTextArea rows="4" @bind-Value="form.Description" /></label>
+                    <div class="form-grid">
+                        <label>ترتیب نمایش<InputNumber @bind-Value="form.SortOrder" /></label>
+                        <label class="checkbox-label"><InputCheckbox @bind-Value="form.IsActive" /> فعال</label>
+                    </div>
+
+                    <h3>SEO دسته‌بندی</h3>
+                    <label>Meta Title
+                        <InputText @bind-Value="form.Seo.MetaTitle" />
+                        <small>@form.Seo.MetaTitle.Length از ۶۵ کاراکتر</small>
+                    </label>
+                    <label>Meta Description
+                        <InputTextArea rows="3" @bind-Value="form.Seo.MetaDescription" />
+                        <small>@form.Seo.MetaDescription.Length از ۱۶۰ کاراکتر</small>
+                    </label>
+                    <label>Canonical Path
+                        <div class="admin-inline-field">
+                            <InputText dir="auto" @bind-Value="form.Seo.CanonicalPath" placeholder="/category/category-slug" />
+                            <button type="button" class="small-button" @onclick="UseDefaultCanonical">مسیر اصلی</button>
+                        </div>
+                    </label>
+                    <label>OpenGraph Image URL<InputText dir="ltr" @bind-Value="form.Seo.OpenGraphImageUrl" /></label>
+                    <div class="form-grid">
+                        <label class="checkbox-label"><InputCheckbox @bind-Value="form.Seo.AllowIndex" /> اجازه ایندکس</label>
+                        <label class="checkbox-label"><InputCheckbox @bind-Value="form.Seo.AllowFollow" /> دنبال‌کردن لینک‌ها</label>
+                    </div>
+
+                    <div class="seo-snippet-preview">
+                        <small>@CanonicalPreview</small>
+                        <strong>@form.Seo.MetaTitle</strong>
+                        <p>@form.Seo.MetaDescription</p>
+                    </div>
+
+                    <button class="admin-primary" disabled="@saving">@(saving ? "در حال ذخیره..." : "ذخیره دسته‌بندی")</button>
+                    @if (editingId is not null)
+                    {
+                        <button type="button" class="admin-secondary" @onclick="Reset">لغو و ایجاد جدید</button>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(message))
+                    {
+                        <p class="form-message">@message</p>
+                    }
+                </div>
+            </EditForm>
+        </section>
+
+        <section class="admin-card">
+            <h2>فهرست دسته‌بندی‌ها</h2>
+            @if (loading)
+            {
+                <p class="muted">در حال دریافت...</p>
+            }
+            else
+            {
+                <div class="category-admin-list">
+                    @foreach (var category in categories)
+                    {
+                        <article>
+                            <img src="@(category.CoverImageUrl ?? string.Empty)" alt="@category.Name" />
+                            <div>
+                                <b>@category.Name</b>
+                                <small dir="auto">/@category.Slug</small>
+                                <small>@category.ProductCount محصول · ترتیب @category.SortOrder</small>
+                                <small>@(category.Seo.AllowIndex ? "index" : "noindex") · @(category.Seo.CanonicalPath ?? $"/category/{category.Slug}")</small>
+                            </div>
+                            <div class="table-actions">
+                                <button @onclick="() => Edit(category)">ویرایش</button>
+                                <button class="danger" @onclick="() => Delete(category)">حذف</button>
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+        </section>
+    </div>
+</section>
+
+@code {
+    private IReadOnlyCollection<CategoryDto> categories = Array.Empty<CategoryDto>();
+    private AdminCategoryRequest form = new();
+    private Guid? editingId;
+    private bool loading = true;
+    private bool saving;
+    private string? message;
+
+    private string CanonicalPreview => SeoSlug.NormalizeCanonicalPath(form.Seo.CanonicalPath, $"/category/{SeoSlug.Normalize(form.Slug)}");
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+        Reset();
+    }
+
+    private async Task Load()
+    {
+        categories = (await Admin.CategoriesAsync()).RequireUiData();
+        loading = false;
+    }
+
+    private void Reset()
+    {
+        editingId = null;
+        form = new AdminCategoryRequest
+        {
+            Name = string.Empty,
+            Slug = string.Empty,
+            Description = string.Empty,
+            SortOrder = categories.Count + 1,
+            Seo = new SeoInput
+            {
+                MetaTitle = "دسته‌بندی لباس گلدوزی | Tatakae",
+                MetaDescription = "خرید و سفارش آنلاین لباس‌های قابل شخصی‌سازی با گلدوزی در فروشگاه Tatakae."
+            }
+        };
+    }
+
+    private void Edit(CategoryDto category)
+    {
+        editingId = category.Id;
+        form = new AdminCategoryRequest
+        {
+            Name = category.Name,
+            Slug = category.Slug,
+            Description = category.Description,
+            CoverImageUrl = category.CoverImageUrl,
+            SortOrder = category.SortOrder,
+            IsActive = category.IsActive,
+            Seo = new SeoInput
+            {
+                MetaTitle = category.Seo.MetaTitle,
+                MetaDescription = category.Seo.MetaDescription,
+                CanonicalPath = category.Seo.CanonicalPath,
+                OpenGraphImageUrl = category.Seo.OpenGraphImageUrl,
+                AllowIndex = category.Seo.AllowIndex,
+                AllowFollow = category.Seo.AllowFollow
+            }
+        };
+    }
+
+    private void GenerateSlug()
+    {
+        form.Slug = SeoSlug.Normalize(string.IsNullOrWhiteSpace(form.Name) ? form.Slug : form.Name);
+        if (string.IsNullOrWhiteSpace(form.Seo.CanonicalPath)) UseDefaultCanonical();
+    }
+
+    private void UseDefaultCanonical() => form.Seo.CanonicalPath = $"/category/{SeoSlug.Normalize(form.Slug)}";
+
+    private async Task Save()
+    {
+        saving = true;
+        message = null;
+        form.Slug = SeoSlug.Normalize(form.Slug);
+        form.Seo.CanonicalPath = SeoSlug.NormalizeCanonicalPath(form.Seo.CanonicalPath, $"/category/{form.Slug}");
+        try
+        {
+            if (editingId is null) (await Admin.CreateCategoryAsync(form)).RequireUiData();
+            else (await Admin.UpdateCategoryAsync(editingId.Value, form)).RequireUiData();
+            await Load();
+            Reset();
+            message = "دسته‌بندی ذخیره شد.";
+        }
+        catch (Exception ex)
+        {
+            message = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task Delete(CategoryDto category)
+    {
+        (await Admin.DeleteCategoryAsync(category.Id)).EnsureUiSuccess();
+        await Load();
+    }
+}

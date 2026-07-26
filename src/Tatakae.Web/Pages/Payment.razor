@@ -1,0 +1,164 @@
+@page "/payment/{OrderId:guid}"
+@using Microsoft.AspNetCore.Components
+@using Tatakae.Application.Contracts.Payments
+@inject IAuthSessionStore Auth
+@inject IPaymentApiClient Payments
+@inject NavigationManager Navigation
+
+<SeoHead Title="پرداخت سفارش | Tatakae" Description="پرداخت امن سفارش با درگاه زرین‌پال." Path="@($"/payment/{OrderId}")" Index="false" Follow="false" />
+<section class="section payment-page">
+    <div class="wrap">
+        <div class="section-head reveal">
+            <div>
+                <span class="eyebrow">secure payment</span>
+                <h1 class="title" style="margin-top:14px">پرداخت سفارش</h1>
+                <p class="lead" style="margin-top:12px;max-width:760px">برای پرداخت آنلاین به درگاه امن زرین‌پال منتقل می‌شوی. تأیید نهایی فقط پس از Verify سمت سرور انجام می‌شود.</p>
+            </div>
+            <a class="ghost" href="/account/orders">سفارش‌های من</a>
+        </div>
+
+        @if (loading)
+        {
+            <div class="loading-state">در حال آماده‌سازی پرداخت...</div>
+        }
+        else if (!Auth.IsSignedIn)
+        {
+            <div class="ink-auth-required"><div><span class="eyebrow">login required</span><h2>برای پرداخت باید وارد شوی</h2><p>پرداخت فقط برای صاحب سفارش فعال است.</p></div><div class="ink-auth-actions"><a class="pill-btn" href="@($"/login?returnUrl=/payment/{OrderId}")">ورود</a></div></div>
+        }
+        else if (!string.IsNullOrWhiteSpace(error))
+        {
+            <div class="empty-state"><h2>پرداخت آماده نشد</h2><p>@error</p><button class="pill-btn" @onclick="PreparePayment">تلاش دوباره</button><a class="ghost" href="/checkout">بازگشت به چک‌اوت</a></div>
+        }
+        else if (payment is not null)
+        {
+            <div class="payment-shell">
+                <article class="payment-card">
+                    <span class="eyebrow">ORDER @payment.OrderNumber</span>
+                    <h2>@payment.MethodLabel</h2>
+                    <p>@payment.GatewayMessage</p>
+                    <div class="payment-amount"><span>مبلغ قابل پرداخت</span><b>@Currency.Format(payment.Amount)</b></div>
+                    <div class="payment-status"><span>وضعیت</span><b class="payment-status--@payment.Status.ToLowerInvariant()">@payment.StatusLabel</b></div>
+                    @if (!string.IsNullOrWhiteSpace(payment.ReferenceId))
+                    {
+                        <div class="payment-status"><span>کد مرجع زرین‌پال</span><b>@payment.ReferenceId</b></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(payment.MaskedCardNumber))
+                    {
+                        <div class="payment-status"><span>کارت پرداخت</span><b>@payment.MaskedCardNumber</b></div>
+                    }
+                    @if (payment.Refunds.Count > 0)
+                    {
+                        @foreach (var refund in payment.Refunds.OrderByDescending(x => x.CreatedAt))
+                        {
+                            <div class="payment-status">
+                                <span>Refund @Currency.Format(refund.Amount)</span>
+                                <b>@refund.StatusLabel</b>
+                            </div>
+                        }
+                    }
+                </article>
+
+                <aside class="payment-actions-panel">
+                    @if (payment.Status is "Verified" or "Succeeded")
+                    {
+                        <h3>پرداخت تأیید شده</h3>
+                        <p>پرداخت قبلاً توسط سرور تأیید شده و سفارش وارد چرخه پردازش شده است.</p>
+                        <a class="pill-btn" href="@($"/order-success/{OrderId}")">مشاهده رسید سفارش</a>
+                    }
+                    else if (method == "CardToCard")
+                    {
+                        <h3>کارت به کارت</h3>
+                        <p>بعد از واریز، رسید باید توسط مدیر بررسی و پرداخت از پنل مدیریت تأیید شود.</p>
+                        <div class="bank-box"><span>اطلاعات کارت را از تنظیمات واقعی فروشگاه وارد کن</span><small>پرداخت دستی شبیه‌سازی نمی‌شود.</small></div>
+                        <a class="ghost" href="/account/orders">پیگیری وضعیت پرداخت</a>
+                    }
+                    else
+                    {
+                        <h3>درگاه زرین‌پال</h3>
+                        <p>پس از پرداخت، زرین‌پال به callback امن API بازمی‌گردد و مبلغ و Authority در سرور Verify می‌شوند.</p>
+                        <button class="pill-btn" disabled="@(busy || string.IsNullOrWhiteSpace(redirectUrl))" @onclick="GoToZarinpal">@(busy ? "در حال انتقال..." : "پرداخت با زرین‌پال")</button>
+                        <button class="ghost" type="button" @onclick="BackToCheckout">بازگشت به چک‌اوت</button>
+                    }
+                </aside>
+            </div>
+        }
+    </div>
+</section>
+
+@code {
+    [Parameter] public Guid OrderId { get; set; }
+    [SupplyParameterFromQuery(Name = "method")] public string? Method { get; set; }
+
+    private string method => string.IsNullOrWhiteSpace(Method) ? "OnlineGateway" : Method!;
+    private bool loading = true;
+    private bool busy;
+    private string? error;
+    private string? redirectUrl;
+    private PaymentDto? payment;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await Auth.EnsureLoadedAsync();
+        if (!Auth.IsSignedIn)
+        {
+            loading = false;
+            return;
+        }
+
+        await PreparePayment();
+    }
+
+    private async Task PreparePayment()
+    {
+        loading = true;
+        error = null;
+        try
+        {
+            var init = (await Payments.StartAsync(new CreatePaymentRequest
+            {
+                OrderId = OrderId,
+                Method = method
+            })).RequireUiData();
+
+            redirectUrl = init.RedirectUrl;
+            payment = (await Payments.GetForOrderAsync(OrderId)).OptionalData() ?? new PaymentDto(
+                init.PaymentId,
+                init.OrderId,
+                init.OrderNumber,
+                Auth.Current?.FullName ?? string.Empty,
+                Auth.Current?.Mobile ?? string.Empty,
+                init.Method,
+                init.Method == "CardToCard" ? "کارت به کارت" : "پرداخت آنلاین",
+                init.Gateway,
+                init.Status,
+                init.StatusLabel,
+                init.Amount,
+                null,
+                null,
+                null,
+                null,
+                null,
+                DateTimeOffset.UtcNow,
+                null,
+                Array.Empty<PaymentTransactionDto>(),
+                Array.Empty<PaymentRefundDto>());
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void GoToZarinpal()
+    {
+        if (string.IsNullOrWhiteSpace(redirectUrl)) return;
+        busy = true;
+        Navigation.NavigateTo(redirectUrl, forceLoad: true);
+    }
+
+    private void BackToCheckout() => Navigation.NavigateTo("/checkout");
+}

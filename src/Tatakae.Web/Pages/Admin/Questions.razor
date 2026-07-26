@@ -1,0 +1,99 @@
+@page "/admin/questions"
+@layout AdminLayout
+@attribute [Authorize(Policy = PermissionNames.AdminQuestionsView)]
+@inject IAdminApiClient Admin
+
+<PageTitle>پرسش و پاسخ محصولات | Tatakae Admin</PageTitle>
+<section class="admin-page">
+    <div class="admin-head">
+        <div>
+            <p class="admin-kicker">PRODUCT Q/A</p>
+            <h1>مدیریت پرسش و پاسخ</h1>
+            <p>پرسش‌های مشتری‌ها را پاسخ بده، رد کن یا مخفی نگه دار.</p>
+        </div>
+        <select class="admin-select" @bind="statusFilter" @bind:after="ReloadAsync">
+            <option value="">همه وضعیت‌ها</option>
+            <option value="Pending">در انتظار</option>
+            <option value="Answered">پاسخ داده شده</option>
+            <option value="Rejected">رد شده</option>
+            <option value="Hidden">مخفی</option>
+        </select>
+    </div>
+
+    @if (loading)
+    {
+        <div class="admin-placeholder">در حال دریافت پرسش‌ها...</div>
+    }
+    else
+    {
+        <section class="admin-card">
+            <div class="section-title"><h2>پرسش‌های محصول</h2><span>@questions.Count مورد</span></div>
+            @foreach (var item in questions)
+            {
+                <article class="admin-question-row">
+                    <div>
+                        <b>@item.ProductName</b>
+                        <p>@item.QuestionText</p>
+                        <small>@item.AuthorName · @(item.Mobile ?? "بدون موبایل") · @item.CreatedAt.LocalDateTime.ToString("yyyy/MM/dd HH:mm")</small>
+                    </div>
+                    <label class="field-label">پاسخ ادمین
+                        <textarea class="input" maxlength="2000" @bind="item.AnswerText"></textarea>
+                    </label>
+                    <label class="field-label">یادداشت بررسی / دلیل رد
+                        <textarea class="input" maxlength="700" @bind="item.ModerationNote"></textarea>
+                    </label>
+                    @if (validationErrors.TryGetValue(item.Id, out var itemError))
+                    {
+                        <p class="form-error">@itemError</p>
+                    }
+                    <div class="admin-actions">
+                        <span class="admin-badge">@item.StatusLabel</span>
+                        <AuthorizeView Policy="@PermissionNames.AdminQuestionsManage">
+                            <Authorized>
+                                <button class="admin-primary" @onclick='() => Moderate(item, "Answered")'>ثبت پاسخ</button>
+                                <button class="admin-ghost" @onclick='() => Moderate(item, "Hidden")'>مخفی</button>
+                                <button class="admin-ghost danger" @onclick='() => Moderate(item, "Rejected")'>رد</button>
+                            </Authorized>
+                        </AuthorizeView>
+                    </div>
+                </article>
+            }
+        </section>
+    }
+</section>
+
+@code {
+    private List<AdminProductQuestionDto> questions = [];
+    private string? statusFilter;
+    private bool loading = true;
+    private readonly Dictionary<Guid, string> validationErrors = [];
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        loading = true;
+        questions = ((await Admin.QuestionsAsync(statusFilter)).RequireUiData()).ToList();
+        loading = false;
+    }
+
+    private async Task Moderate(AdminProductQuestionDto item, string status)
+    {
+        var request = new AdminQuestionModerationRequest
+        {
+            Status = status,
+            AnswerText = string.IsNullOrWhiteSpace(item.AnswerText) ? null : item.AnswerText.Trim(),
+            ModerationNote = string.IsNullOrWhiteSpace(item.ModerationNote) ? null : item.ModerationNote.Trim()
+        };
+        var errors = ObjectGraphValidator.Validate(request);
+        if (errors.Count > 0)
+        {
+            validationErrors[item.Id] = string.Join(" ", errors.Select(x => x.ErrorMessage).Distinct());
+            return;
+        }
+
+        validationErrors.Remove(item.Id);
+        (await Admin.ModerateQuestionAsync(item.Id, request)).RequireUiData();
+        await ReloadAsync();
+    }
+}

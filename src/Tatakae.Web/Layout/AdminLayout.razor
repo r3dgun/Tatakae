@@ -1,0 +1,34 @@
+@inherits LayoutComponentBase
+<HeadContent><meta name="robots" content="noindex,nofollow" /></HeadContent>
+<ResponsiveRouteMarker />
+<div class="admin-shell" dir="rtl">
+    <aside class="admin-sidebar">
+        <a class="admin-brand" href="/admin">TATA<span>KAE</span><small>EMBROIDERY ADMIN</small></a>
+        <nav>
+            <AuthorizeView Policy="@PermissionNames.AdminDashboardView"><Authorized><NavLink href="/admin" Match="NavLinkMatch.All">▦ داشبورد</NavLink></Authorized></AuthorizeView>
+            <AuthorizeView Policy="@PermissionNames.AdminProductsView"><Authorized><NavLink href="/admin/products">◈ محصولات</NavLink><NavLink href="/admin/inventory">▥ موجودی و SKU</NavLink></Authorized></AuthorizeView>
+            <AuthorizeView Policy="@PermissionNames.AdminCategoriesView"><Authorized><NavLink href="/admin/categories">▤ دسته‌بندی‌ها</NavLink></Authorized></AuthorizeView>
+            <AuthorizeView Policy="@PermissionNames.AdminOrdersView"><Authorized><NavLink href="/admin/orders">◷ سفارش‌ها</NavLink><NavLink href="/admin/payments">◉ پرداخت‌ها</NavLink></Authorized></AuthorizeView>
+            <AuthorizeView Policy="@PermissionNames.AdminCustomersView"><Authorized><NavLink href="/admin/customers">♙ مشتری‌ها</NavLink></Authorized></AuthorizeView>
+            <AuthorizeView Policy="@PermissionNames.AdminCouponsView"><Authorized><NavLink href="/admin/coupons">✦ کدهای تخفیف</NavLink></Authorized></AuthorizeView>
+            <AuthorizeView Policy="@PermissionNames.AdminShippingView"><Authorized><NavLink href="/admin/shipping">▣ ارسال</NavLink></Authorized></AuthorizeView>
+            <AuthorizeView Policy="@PermissionNames.AdminNotificationsView"><Authorized><NavLink href="/admin/notifications">◌ اعلان‌ها</NavLink></Authorized></AuthorizeView>
+            <AuthorizeView Policy="@PermissionNames.AdminMediaView"><Authorized><NavLink href="/admin/media">▧ فایل‌ها</NavLink><NavLink href="/admin/artworks">✳ طرح‌های گلدوزی</NavLink></Authorized></AuthorizeView>
+            <AuthorizeView Policy="@PermissionNames.AdminSeoView"><Authorized><NavLink href="/admin/seo">⌁ سئو</NavLink></Authorized></AuthorizeView>
+            <AuthorizeView Policy="@PermissionNames.AdminLegalView"><Authorized><NavLink href="/admin/legal">§ قوانین و ارتباط</NavLink></Authorized></AuthorizeView>
+            <AuthorizeView Policy="@PermissionNames.AdminQuestionsView"><Authorized><NavLink href="/admin/questions">؟ پرسش و پاسخ</NavLink><NavLink href="/admin/reviews">★ نظرات</NavLink></Authorized></AuthorizeView>
+            <AuthorizeView Policy="@PermissionNames.AdminSecurityView"><Authorized><NavLink href="/admin/security">⚿ دسترسی‌ها</NavLink></Authorized></AuthorizeView>
+        </nav>
+        <a class="admin-store-link" href="/">↗ مشاهده فروشگاه</a>
+    </aside>
+    <section class="admin-content">
+        <header class="admin-topbar">
+            <div><span>مدیریت فروشگاه</span><strong>Identity + Permission Authorization</strong></div>
+            <AuthorizeView>
+                <Authorized><span class="admin-topbar-status">● @context.User.Identity?.Name</span></Authorized>
+                <NotAuthorized><span class="admin-topbar-status">● مهمان</span></NotAuthorized>
+            </AuthorizeView>
+        </header>
+        <main class="admin-main">@Body</main>
+    </section>
+</div>

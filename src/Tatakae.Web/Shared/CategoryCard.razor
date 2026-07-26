@@ -1,0 +1,7 @@
+<article class="category-card">
+    <a href="@($"/category/{Category.Slug}")">
+        <img src="@(Category.CoverImageUrl ?? "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=900&h=700&fit=crop")" alt="@Category.Name" loading="lazy" />
+        <div class="category-card-overlay"><span>@Category.ProductCount مدل</span><h2>@Category.Name</h2><p>@Category.Description</p><b>مشاهده لباس‌ها ←</b></div>
+    </a>
+</article>
+@code { [Parameter, EditorRequired] public CategoryDto Category { get; set; } = default!; }

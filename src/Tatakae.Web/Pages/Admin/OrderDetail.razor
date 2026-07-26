@@ -1,0 +1,192 @@
+@page "/admin/orders/{Id:guid}"
+@layout AdminLayout
+@attribute [Authorize(Policy = PermissionNames.AdminOrdersView)]
+@inject IAdminApiClient Admin
+
+@if(order is null)
+{
+    <div class="admin-placeholder">در حال دریافت سفارش...</div>
+}
+else
+{
+<section class="admin-page order-ops-page">
+    <div class="admin-head">
+        <div>
+            <p class="admin-kicker">ORDER WORKFLOW</p>
+            <h1>@order.OrderNumber</h1>
+            <p>@order.CustomerName · @order.CustomerMobile · @order.CreatedAt.LocalDateTime.ToString("yyyy/MM/dd HH:mm")</p>
+        </div>
+        <a class="admin-secondary" href="/admin/orders">بازگشت</a>
+    </div>
+
+    <section class="admin-card order-status-hero">
+        <div>
+            <span class="workflow-label">وضعیت فعلی</span>
+            <strong>@order.StatusLabel</strong>
+            <p>@CurrentStatusDescription</p>
+        </div>
+        <div class="workflow-next-actions">
+            @if(workflow?.NextStatuses.Count > 0)
+            {
+                @foreach(var next in workflow.NextStatuses)
+                {
+                    <button type="button" class="workflow-action @next.UiTone" @onclick="() => SelectStatus(next.Status)">@next.Label</button>
+                }
+            }
+            else
+            {
+                <span class="workflow-closed">این سفارش به وضعیت نهایی رسیده است.</span>
+            }
+        </div>
+    </section>
+
+    <div class="admin-order-detail-grid">
+        <div>
+            <section class="admin-card">
+                <div class="section-title"><h2>مسیر اجرای سفارش</h2><span class="status-pill">@order.StatusLabel</span></div>
+                <div class="workflow-timeline">
+                    @foreach(var item in workflow?.Timeline ?? Array.Empty<OrderTimelineItemDto>())
+                    {
+                        <article class="workflow-step @(item.IsCompleted ? "done" : "") @(item.IsCurrent ? "current" : "")">
+                            <span></span>
+                            <div>
+                                <b>@item.Title</b>
+                                <p>@item.Description</p>
+                                @if(item.HappenedAt is not null)
+                                {
+                                    <small>@item.HappenedAt.Value.LocalDateTime.ToString("yyyy/MM/dd HH:mm")</small>
+                                }
+                            </div>
+                        </article>
+                    }
+                </div>
+            </section>
+
+            <section class="admin-card">
+                <h2>آیتم‌های سفارش و فایل تولید</h2>
+                @foreach(var line in order.Lines)
+                {
+                    <article class="admin-line-detail studio-admin-line">
+                        <img src="@line.ProductImageUrl" alt="@line.ProductName"/>
+                        <div>
+                            <h3>@line.ProductName</h3>
+                            <p>@line.ColorName · سایز @line.Size · SKU: @line.Sku · تعداد @line.Quantity</p>
+                            <p><b>گلدوزی:</b> @line.Embroidery.PlacementLabel · @line.Embroidery.WidthCm × @line.Embroidery.HeightCm سانتی‌متر · @line.Embroidery.ThreadColorCount رنگ نخ</p>
+                            <div class="studio-production-grid">
+                                <span>نوع لباس: <b>@GarmentLabel(line.Embroidery.GarmentType)</b></span>
+                                <span>رنگ لباس: <b dir="ltr">@line.Embroidery.GarmentColorHex</b></span>
+                                <span>طرح: <b>@DesignLabel(line.Embroidery)</b></span>
+                                <span>موقعیت: <b dir="ltr">X:@line.Embroidery.PositionX / Y:@line.Embroidery.PositionY</b></span>
+                                <span>اندازه: <b>@line.Embroidery.ScalePercent%</b></span>
+                                <span>چرخش: <b>@line.Embroidery.RotationDegrees°</b></span>
+                                <span>شفافیت: <b>@line.Embroidery.OpacityPercent%</b></span>
+                                <span>رنگ نخ: <b dir="ltr">@string.Join("، ", line.Embroidery.ThreadColorHexes)</b></span>
+                            </div>
+                            @if(!string.IsNullOrWhiteSpace(line.Embroidery.Text)){<p><b>متن:</b> @line.Embroidery.Text</p>}
+                            @if(!string.IsNullOrWhiteSpace(line.Embroidery.Note)){<p><b>یادداشت مشتری:</b> @line.Embroidery.Note</p>}
+                            @if(!string.IsNullOrWhiteSpace(line.Embroidery.ArtworkFileUrl)){<a class="admin-link" href="@line.Embroidery.ArtworkFileUrl" target="_blank">مشاهده فایل آپلودی طرح</a>}
+                        </div>
+                        <strong>@Currency.Format(line.LineTotal)</strong>
+                    </article>
+                }
+            </section>
+
+            <section class="admin-card">
+                <h2>تاریخچه تغییر وضعیت</h2>
+                <div class="workflow-history">
+                    @if(workflow?.History.Count > 0)
+                    {
+                        @foreach(var row in workflow.History.OrderByDescending(x => x.HappenedAt))
+                        {
+                            <article>
+                                <div><b>@row.ToStatusLabel</b><small>@row.HappenedAt.LocalDateTime.ToString("yyyy/MM/dd HH:mm") · @row.ChangedBy</small></div>
+                                <p>@row.Title</p>
+                                @if(!string.IsNullOrWhiteSpace(row.Note)){<small>@row.Note</small>}
+                                @if(!string.IsNullOrWhiteSpace(row.TrackingCode)){<span>کد رهگیری: @row.TrackingCode</span>}
+                            </article>
+                        }
+                    }
+                    else
+                    {
+                        <p class="muted-text">هنوز تاریخچه‌ای ثبت نشده است.</p>
+                    }
+                </div>
+            </section>
+
+            <section class="admin-card"><h2>نشانی ارسال</h2><p class="address-text">@order.ShippingAddress.RecipientName · @order.ShippingAddress.Mobile<br/>@order.ShippingAddress.Province، @order.ShippingAddress.City، @order.ShippingAddress.AddressLine<br/>کدپستی: @order.ShippingAddress.PostalCode</p></section>
+        </div>
+        <aside>
+            <section class="admin-card">
+                <h2>عملیات سفارش</h2>
+                <EditForm Model="update" OnValidSubmit="Save"><RecursiveDataAnnotationsValidator /><ValidationSummary />
+                    <label>وضعیت
+                        <select @bind="update.Status">
+                            @foreach(var status in workflow?.AllStatuses ?? Array.Empty<OrderStatusOptionDto>())
+                            {
+                                <option value="@status.Status">@status.Label</option>
+                            }
+                        </select>
+                        <ValidationMessage For="() => update.Status" />
+                    </label>
+                    <label>کد رهگیری<InputText maxlength="100" @bind-Value="update.TrackingCode" placeholder="مثلاً TPX-123456"/><ValidationMessage For="() => update.TrackingCode" /></label>
+                    <label>یادداشت مدیر<InputTextArea rows="5" maxlength="1000" @bind-Value="update.AdminNote" placeholder="یادداشت داخلی یا توضیح تغییر وضعیت"/><ValidationMessage For="() => update.AdminNote" /></label>
+                    <label class="checkbox-label"><InputCheckbox @bind-Value="update.Force"/> تغییر اجباری وضعیت</label>
+                    <button class="admin-primary" disabled="@saving">@(saving?"در حال ذخیره...":"ثبت وضعیت")</button>
+                </EditForm>
+                @if(!string.IsNullOrWhiteSpace(message)){<p class="form-message">@message</p>}
+            </section>
+            <section class="admin-card"><h2>مبالغ</h2><div class="summary-row"><span>جمع کالا</span><b>@Currency.Format(order.Subtotal)</b></div><div class="summary-row"><span>روش ارسال</span><b>@order.ShippingMethodTitle</b></div><div class="summary-row"><span>ارسال</span><b>@Currency.Format(order.ShippingAmount)</b></div><div class="summary-row"><span>تخفیف</span><b>@Currency.Format(order.DiscountAmount)</b></div><div class="summary-total"><span>جمع</span><strong>@Currency.Format(order.Total)</strong></div></section>
+        </aside>
+    </div>
+</section>
+}
+
+@code{
+    [Parameter] public Guid Id{get;set;}
+    private OrderDto? order;
+    private AdminOrderWorkflowDto? workflow;
+    private AdminOrderStatusRequest update=new();
+    private bool saving;
+    private string? message;
+    private string CurrentStatusDescription => workflow?.AllStatuses.FirstOrDefault(x => x.Status == order?.Status)?.Description ?? "";
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        order=(await Admin.OrderAsync(Id)).RequireUiData();
+        workflow=(await Admin.OrderWorkflowAsync(Id)).RequireUiData();
+        if(order is not null)
+        {
+            update.Status=order.Status;
+            update.TrackingCode=order.TrackingCode;
+            update.AdminNote=order.AdminNote;
+        }
+    }
+
+    private void SelectStatus(string status)
+    {
+        update.Status=status;
+        message=null;
+    }
+
+    private async Task Save()
+    {
+        saving=true;
+        message=null;
+        try
+        {
+            order=(await Admin.UpdateOrderStatusAsync(Id,update)).RequireUiData();
+            workflow=(await Admin.OrderWorkflowAsync(Id)).RequireUiData();
+            update.Status=order.Status;
+            update.TrackingCode=order.TrackingCode;
+            update.AdminNote=order.AdminNote;
+            message="وضعیت سفارش ذخیره شد.";
+        }
+        catch(Exception ex){message=ex.Message;}
+        finally{saving=false;}
+    }
+
+    private static string GarmentLabel(string value)=>value switch{"Hoodie"=>"هودی","Sweatshirt" or "Crewneck"=>"دورس / سویشرت",_=>"تی‌شرت"};
+    private static string DesignLabel(EmbroideryConfigurationDto embroidery)=>string.Equals(embroidery.DesignSource,"ReadyMade",StringComparison.OrdinalIgnoreCase)?"محصول آماده گلدوزی‌شده":embroidery.DesignSource switch{"Upload"=>$"آپلودی ({embroidery.ArtworkFileName})","Text"=>$"متن ({embroidery.Text})",_=>embroidery.MotifKey=="sword"?"طرح آماده شمشیر":embroidery.MotifKey=="cloud"?"طرح آماده ابر":"طرح آماده اژدها"};
+}

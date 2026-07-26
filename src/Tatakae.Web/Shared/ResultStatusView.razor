@@ -1,0 +1,160 @@
+@using Tatakae.Application.Contracts.Common
+@using Tatakae.Web.ApiClients.Results
+@inject NavigationManager Navigation
+
+<section class="result-status-page result-status-@StatusCode" dir="rtl" role="alert" aria-labelledby="result-status-title">
+    <div class="result-status-card reveal">
+        <span class="result-status-code">@StatusCode</span>
+        <p class="eyebrow">@Eyebrow</p>
+        <h1 id="result-status-title">@Title</h1>
+        <p class="result-status-message">@EffectiveMessage</p>
+
+        @if (EffectiveResult.Errors is { Count: > 0 } errors)
+        {
+            <div class="result-status-errors" aria-label="خطاهای اعتبارسنجی">
+                @foreach (var entry in errors)
+                {
+                    <div class="result-status-field-error">
+                        <strong>@FieldLabel(entry.Key)</strong>
+                        <ul>
+                            @foreach (var message in entry.Value)
+                            {
+                                <li>@message</li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(EffectiveResult.ErrorCode))
+        {
+            <small class="result-status-reference">کد خطا: @EffectiveResult.ErrorCode</small>
+        }
+
+        <div class="result-status-actions">
+            @if (EffectiveResult.Status == ResultStatus.Unauthorized)
+            {
+                <a class="pill-btn" href="@LoginUrl">ورود به حساب</a>
+            }
+            else if (EffectiveResult.Status == ResultStatus.NotFound)
+            {
+                <a class="pill-btn" href="/shop">رفتن به فروشگاه</a>
+            }
+            else
+            {
+                <button type="button" class="pill-btn" @onclick="Reload">تلاش دوباره</button>
+            }
+
+            <a class="pill-btn ghost" href="/">بازگشت به خانه</a>
+        </div>
+    </div>
+</section>
+
+@code {
+    [Parameter] public Exception? Error { get; set; }
+    [Parameter] public ResultDto? Result { get; set; }
+    [Parameter] public ResultStatus? Status { get; set; }
+    [Parameter] public string? Message { get; set; }
+
+    private ResultDto EffectiveResult
+    {
+        get
+        {
+            if (Result is not null)
+                return Result;
+
+            if (Error is ApiClientException apiError)
+                return apiError.Result;
+
+            if (Error is ResultDtoException applicationError)
+                return new ResultDto().Failed(applicationError);
+
+            if (Status is { } status)
+            {
+                return new ResultDto().Failed(
+                    string.IsNullOrWhiteSpace(Message) ? DefaultMessage(status) : Message!,
+                    status,
+                    DefaultErrorCode(status));
+            }
+
+            return new ResultDto().Failed(
+                string.IsNullOrWhiteSpace(Error?.Message)
+                    ? "خطایی غیرمنتظره رخ داده است. لطفاً دوباره تلاش کنید."
+                    : Error!.Message,
+                ResultStatus.Failure,
+                "unexpected_ui_error");
+        }
+    }
+
+    private int StatusCode => EffectiveResult.Status switch
+    {
+        ResultStatus.ValidationError => 400,
+        ResultStatus.Unauthorized => 401,
+        ResultStatus.Forbidden => 403,
+        ResultStatus.NotFound => 404,
+        ResultStatus.Conflict => 409,
+        _ => 500
+    };
+
+    private string Eyebrow => EffectiveResult.Status switch
+    {
+        ResultStatus.ValidationError => "VALIDATION ERROR",
+        ResultStatus.Unauthorized => "AUTHENTICATION REQUIRED",
+        ResultStatus.Forbidden => "ACCESS DENIED",
+        ResultStatus.NotFound => "NOT FOUND",
+        ResultStatus.Conflict => "CONFLICT",
+        _ => "SERVICE ERROR"
+    };
+
+    private string Title => EffectiveResult.Status switch
+    {
+        ResultStatus.ValidationError => "اطلاعات واردشده معتبر نیست",
+        ResultStatus.Unauthorized => "برای ادامه وارد حساب شوید",
+        ResultStatus.Forbidden => "اجازه دسترسی به این بخش را ندارید",
+        ResultStatus.NotFound => "صفحه یا اطلاعات موردنظر پیدا نشد",
+        ResultStatus.Conflict => "امکان انجام این عملیات وجود ندارد",
+        _ => "در پردازش درخواست خطایی رخ داد"
+    };
+
+    private string EffectiveMessage
+        => string.IsNullOrWhiteSpace(EffectiveResult.Message)
+            ? DefaultMessage(EffectiveResult.Status)
+            : EffectiveResult.Message;
+
+    private string LoginUrl
+    {
+        get
+        {
+            var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
+            var returnUrl = string.IsNullOrWhiteSpace(relative) ? "/" : $"/{relative}";
+            return $"/login?returnUrl={Uri.EscapeDataString(returnUrl)}";
+        }
+    }
+
+    private static string DefaultMessage(ResultStatus status) => status switch
+    {
+        ResultStatus.ValidationError => "فیلدهای مشخص‌شده را اصلاح و دوباره تلاش کنید.",
+        ResultStatus.Unauthorized => "نشست شما معتبر نیست یا برای انجام این عملیات باید وارد حساب شوید.",
+        ResultStatus.Forbidden => "حساب فعلی Permission لازم برای مشاهده یا تغییر این بخش را ندارد.",
+        ResultStatus.NotFound => "ممکن است آدرس تغییر کرده باشد یا رکورد موردنظر حذف شده باشد.",
+        ResultStatus.Conflict => "اطلاعات در همین فاصله تغییر کرده یا عملیات با وضعیت فعلی سازگار نیست.",
+        _ => "ارتباط با سرویس یا پردازش درخواست ناموفق بود."
+    };
+
+    private static string DefaultErrorCode(ResultStatus status) => status switch
+    {
+        ResultStatus.ValidationError => "validation_error",
+        ResultStatus.Unauthorized => "unauthorized",
+        ResultStatus.Forbidden => "forbidden",
+        ResultStatus.NotFound => "not_found",
+        ResultStatus.Conflict => "conflict",
+        _ => "service_failure"
+    };
+
+    private static string FieldLabel(string memberName)
+        => string.IsNullOrWhiteSpace(memberName) ? "فرم" : memberName;
+
+    private void Reload()
+        => Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+}

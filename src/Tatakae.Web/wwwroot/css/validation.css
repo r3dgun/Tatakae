@@ -1,0 +1,12 @@
+/* Shared validation states for storefront and admin forms. */
+.validation-message{display:block;margin-top:6px;color:#c62838;font-size:.75rem;line-height:1.8;font-weight:700}
+.validation-errors{margin:0 0 16px;padding:12px 34px 12px 14px;border:1px solid color-mix(in srgb,#c62838 38%,transparent);border-radius:10px;background:color-mix(in srgb,#c62838 8%,transparent);color:#a51f2d;font-size:.78rem;line-height:1.9}
+.validation-errors:empty{display:none}
+input.invalid,textarea.invalid,select.invalid,.input-validation-error{border-color:#c62838!important;box-shadow:0 0 0 3px color-mix(in srgb,#c62838 14%,transparent)!important;outline:none}
+input.valid.modified,textarea.valid.modified,select.valid.modified{border-color:#27856f}
+.form-error{color:#c62838;font-size:.78rem;line-height:1.8}
+[aria-invalid="true"]{border-color:#c62838!important}
+.admin-shell .validation-message,.admin-shell .validation-errors,.admin-shell .form-error{color:#ff8792}
+.admin-shell .validation-errors{border-color:rgba(255,135,146,.35);background:rgba(230,57,70,.09)}
+.admin-shell input.invalid,.admin-shell textarea.invalid,.admin-shell select.invalid{border-color:#ff6572!important;box-shadow:0 0 0 3px rgba(230,57,70,.15)!important}
+@media (max-width:600px){.validation-errors{padding:10px 30px 10px 12px;font-size:.73rem}.validation-message{font-size:.7rem}}

@@ -1,0 +1,8 @@
+@page "/admin/customers"
+@layout AdminLayout
+@attribute [Authorize(Policy = PermissionNames.AdminCustomersView)]
+@inject IAdminApiClient Admin
+
+<PageTitle>مشتریان | Tatakae</PageTitle>
+<section class="admin-page"><div class="admin-head"><div><p class="admin-kicker">CUSTOMERS</p><h1>مشتریان فروشگاه</h1><p>نمای پایه CRM: ارزش طول عمر مشتری، تعداد سفارش و اطلاعات تماس.</p></div></div>@if(loading){<div class="admin-placeholder">در حال دریافت مشتری‌ها...</div>}else{<section class="admin-card"><div class="admin-table-wrap"><table><thead><tr><th>مشتری</th><th>موبایل</th><th>ایمیل</th><th>تعداد سفارش</th><th>ارزش خرید</th><th>عضویت</th></tr></thead><tbody>@foreach(var customer in customers){<tr><td><b>@customer.FullName</b></td><td dir="ltr">@customer.Mobile</td><td dir="ltr">@customer.Email</td><td>@customer.OrderCount</td><td>@Currency.Format(customer.LifetimeValue)</td><td>@customer.CreatedAt.LocalDateTime.ToString("yyyy/MM/dd")</td></tr>}</tbody></table></div></section>}</section>
+@code{private IReadOnlyCollection<CustomerDto> customers=Array.Empty<CustomerDto>();private bool loading=true;protected override async Task OnInitializedAsync(){customers=(await Admin.CustomersAsync()).RequireUiData();loading=false;}}

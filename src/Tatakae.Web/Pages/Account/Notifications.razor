@@ -1,0 +1,94 @@
+@page "/account/notifications"
+@inject IAuthSessionStore Auth
+@inject IAccountApiClient AccountApi
+
+<SeoHead Title="اعلان‌های حساب | Tatakae" Description="پیگیری وضعیت سفارش، پرداخت و پیام‌های مهم فروشگاه Tatakae." Path="/account/notifications" Index="false" />
+<section class="section account-page" id="notifications">
+    <div class="wrap">
+        <div class="section-head reveal">
+            <div>
+                <span class="eyebrow">notifications / tracking</span>
+                <h1 class="title" style="margin-top:14px">اعلان‌ها</h1>
+                <p class="lead" style="margin-top:12px;max-width:760px">وضعیت سفارش، پرداخت، کد رهگیری و پیام‌های مهم فروشگاه را اینجا دنبال کن.</p>
+            </div>
+            <div class="account-head-actions">
+                <a class="ghost" href="/account/orders">سفارش‌ها</a>
+                <button class="ghost" @onclick="MarkAllRead" disabled="@(summary is null || summary.Unread == 0)">خواندن همه</button>
+            </div>
+        </div>
+
+        @if (loading)
+        {
+            <div class="ink-state"><h2>در حال دریافت اعلان‌ها...</h2></div>
+        }
+        else if (!Auth.IsSignedIn)
+        {
+            <div class="ink-auth-required">
+                <div><span class="eyebrow">login required</span><h2>برای دیدن اعلان‌ها وارد شو</h2><p>اعلان‌ها فقط برای سفارش‌ها و حساب خودت نمایش داده می‌شوند.</p></div>
+                <div class="ink-auth-actions"><a class="pill-btn" href="/login?returnUrl=/account/notifications">ورود</a></div>
+            </div>
+        }
+        else if (summary is null || summary.Items.Count == 0)
+        {
+            <div class="empty-state">هنوز اعلانی برای حساب تو ثبت نشده است.</div>
+        }
+        else
+        {
+            <div class="account-stat-grid notification-stats">
+                <div><b>@summary.Total</b><span>کل اعلان‌ها</span></div>
+                <div><b>@summary.Unread</b><span>خوانده‌نشده</span></div>
+                <div><b>@summary.Sent</b><span>ارسال‌شده</span></div>
+                <div><b>@summary.Failed</b><span>ناموفق</span></div>
+            </div>
+
+            <div class="notification-list">
+                @foreach (var item in summary.Items)
+                {
+                    <article class="notification-card @(item.IsRead ? "read" : "unread")">
+                        <div class="notification-main">
+                            <span class="status-chip @(item.IsRead ? "success" : "warning")">@(item.IsRead ? "خوانده‌شده" : "جدید")</span>
+                            <span class="eyebrow">@item.TypeLabel · @item.ChannelLabel</span>
+                            <h3>@item.Subject</h3>
+                            <p>@item.Body</p>
+                            <small>@item.CreatedAt.ToLocalTime().ToString("yyyy/MM/dd HH:mm") @(!string.IsNullOrWhiteSpace(item.RelatedOrderNumber) ? $" · سفارش {item.RelatedOrderNumber}" : string.Empty)</small>
+                        </div>
+                        <div class="notification-actions">
+                            @if (!string.IsNullOrWhiteSpace(item.ActionUrl))
+                            {
+                                <a class="ghost" href="@item.ActionUrl">مشاهده</a>
+                            }
+                            @if (!item.IsRead)
+                            {
+                                <button class="ghost" @onclick="async () => await MarkRead(item.Id)">خواندم</button>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </div>
+</section>
+
+@code {
+    private bool loading = true;
+    private NotificationSummaryDto? summary;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.EnsureLoadedAsync();
+        if (Auth.IsSignedIn) summary = (await AccountApi.NotificationsAsync()).RequireUiData();
+        loading = false;
+    }
+
+    private async Task MarkRead(Guid id)
+    {
+        (await AccountApi.MarkNotificationReadAsync(id)).EnsureUiSuccess();
+        summary = (await AccountApi.NotificationsAsync()).RequireUiData();
+    }
+
+    private async Task MarkAllRead()
+    {
+        (await AccountApi.MarkAllNotificationsReadAsync()).EnsureUiSuccess();
+        summary = (await AccountApi.NotificationsAsync()).RequireUiData();
+    }
+}

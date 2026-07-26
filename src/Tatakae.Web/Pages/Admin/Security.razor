@@ -1,0 +1,416 @@
+@page "/admin/security"
+@layout AdminLayout
+@attribute [Authorize(Policy = PermissionNames.AdminSecurityView)]
+@inject IAdminApiClient Admin
+
+<PageTitle>مدیریت دسترسی‌ها | Tatakae</PageTitle>
+<section class="admin-page">
+    <div class="admin-head">
+        <div>
+            <p class="admin-kicker">IDENTITY / AUTHORIZATION</p>
+            <h1>کاربر، نقش و Permission</h1>
+            <p>هر Role یک‌سری Permission دارد و هر صفحه ادمین با Permission خودش محافظت می‌شود.</p>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(message)) { <div class="admin-placeholder">@message</div> }
+    @if (loading) { <div class="admin-placeholder">در حال دریافت اطلاعات امنیتی...</div> }
+    else
+    {
+        <section class="admin-card">
+            <div class="section-title"><h2>ویرایش Permission نقش‌ها</h2><span>@permissions.Count Permission</span></div>
+            <div class="admin-grid two">
+                <label class="field-label">انتخاب نقش
+                    <select class="input" @bind="SelectedRoleId">
+                        <option value="">یک نقش را انتخاب کن</option>
+                        @foreach (var role in roles)
+                        {
+                            <option value="@role.Id">@role.DisplayName (@role.Name)</option>
+                        }
+                    </select>
+                </label>
+                <div class="admin-actions" style="align-self:end">
+                    <AuthorizeView Policy="@PermissionNames.AdminSecurityManage">
+                        <Authorized><button class="admin-primary" @onclick="SaveRolePermissionsAsync" disabled="@(selectedRole is null || saving)">@(saving ? "در حال ذخیره..." : "ذخیره دسترسی نقش")</button></Authorized>
+                    </AuthorizeView>
+                </div>
+            </div>
+
+            @if (selectedRole is not null)
+            {
+                <div class="admin-permission-grid">
+                    @foreach (var group in permissions.GroupBy(x => x.GroupName).OrderBy(x => x.Key))
+                    {
+                        <article class="admin-mini-card">
+                            <h3>@group.Key</h3>
+                            @foreach (var permission in group.OrderBy(x => x.SortOrder))
+                            {
+                                <label class="check-row">
+                                    <input type="checkbox" checked="@selectedPermissionKeys.Contains(permission.Key)" @onchange="e => TogglePermission(permission.Key, e)" />
+                                    <span><b>@permission.DisplayName</b><small>ID: @permission.PermissionNumber<br />@permission.Key<br />@permission.PagePath</small></span>
+                                </label>
+                            }
+                        </article>
+                    }
+                </div>
+            }
+        </section>
+
+        <section class="admin-card">
+            <div class="section-title"><h2>نقش‌ها</h2><span>@roles.Count نقش</span></div>
+            <div class="admin-table-wrap">
+                <table>
+                    <thead><tr><th>نقش</th><th>عنوان</th><th>سیستمی</th><th>تعداد دسترسی</th><th>دسترسی‌ها</th></tr></thead>
+                    <tbody>
+                        @foreach (var role in roles)
+                        {
+                            <tr>
+                                <td><b>@role.Name</b></td>
+                                <td>@role.DisplayName</td>
+                                <td>@(role.IsSystem ? "بله" : "خیر")</td>
+                                <td>@role.Permissions.Count</td>
+                                <td><small>@string.Join("، ", role.Permissions.Take(8))@(role.Permissions.Count > 8 ? " ..." : "")</small></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+
+
+
+        <section class="admin-card">
+            <div class="section-title"><h2>نگاشت صفحه به Permission</h2><span>@adminPages.Count صفحه ادمین</span></div>
+            <p class="admin-muted">اینجا مشخص می‌شود هر صفحه ادمین با کدام Permission باز شود. لینک‌های منو و دسترسی API هم بر همین مدل Permission طراحی شده‌اند.</p>
+            <div class="admin-grid two">
+                <label class="field-label">انتخاب صفحه
+                    <select class="input" @bind="SelectedAdminPageId">
+                        <option value="">یک صفحه را انتخاب کن</option>
+                        @foreach (var adminPage in adminPages.OrderBy(x => x.SortOrder))
+                        {
+                            <option value="@(adminPage.Id)">@($"{adminPage.Title} - {adminPage.Path}")</option>
+                        }
+                    </select>
+                </label>
+                <div class="admin-actions" style="align-self:end">
+                    <AuthorizeView Policy="@PermissionNames.AdminSecurityManage">
+                        <Authorized><button class="admin-primary" @onclick="SaveAdminPageAsync" disabled="@(editAdminPage is null || savingAdminPage)">@(savingAdminPage ? "در حال ذخیره..." : "ذخیره دسترسی صفحه")</button></Authorized>
+                    </AuthorizeView>
+                </div>
+            </div>
+            @if (editAdminPage is not null)
+            {
+                <div class="admin-grid two">
+                    <label class="field-label">کلید صفحه<input class="input" @bind="editAdminPage.PageKey" /></label>
+                    <label class="field-label">عنوان صفحه<input class="input" @bind="editAdminPage.Title" /></label>
+                    <label class="field-label">مسیر صفحه<input class="input" @bind="editAdminPage.Path" /></label>
+                    <label class="field-label">Permission لازم
+                        <select class="input" @bind="editAdminPage.RequiredPermissionKey">
+                            @foreach (var permission in permissions.OrderBy(x => x.GroupName).ThenBy(x => x.SortOrder))
+                            {
+                                <option value="@permission.Key">@permission.DisplayName - @permission.Key</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="field-label">گروه منو<input class="input" @bind="editAdminPage.MenuGroup" /></label>
+                    <label class="field-label">آیکن<input class="input" @bind="editAdminPage.Icon" /></label>
+                </div>
+                <label class="field-label">توضیح<textarea class="input" rows="3" @bind="editAdminPage.Description"></textarea></label>
+                <div class="admin-grid two">
+                    <label class="check-row"><input type="checkbox" @bind="editAdminPage.ShowInMenu" /> در منوی ادمین نمایش داده شود</label>
+                    <label class="check-row"><input type="checkbox" @bind="editAdminPage.IsActive" /> فعال باشد</label>
+                    <label class="field-label">ترتیب<input class="input" type="number" @bind="editAdminPage.SortOrder" /></label>
+                </div>
+            }
+
+            <div class="admin-table-wrap">
+                <table>
+                    <thead><tr><th>صفحه</th><th>مسیر</th><th>Permission</th><th>Permission ID</th><th>گروه</th><th>نمایش در منو</th></tr></thead>
+                    <tbody>
+                        @foreach (var adminPage in adminPages.OrderBy(x => x.SortOrder))
+                        {
+                            <tr>
+                                <td><b>@adminPage.Icon @adminPage.Title</b><br /><small>@adminPage.PageKey</small></td>
+                                <td>@adminPage.Path</td>
+                                <td><code>@adminPage.RequiredPermissionKey</code></td>
+                                <td>@(permissions.FirstOrDefault(x => x.Key == adminPage.RequiredPermissionKey)?.PermissionNumber.ToString() ?? "-")</td>
+                                <td>@adminPage.MenuGroup</td>
+                                <td>@(adminPage.ShowInMenu ? "بله" : "خیر")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="admin-card">
+            <div class="section-title"><h2>ویرایش Role کاربر</h2><span>کاربر ← Role</span></div>
+            <div class="admin-grid two">
+                <label class="field-label">انتخاب کاربر
+                    <select class="input" @bind="SelectedUserId">
+                        <option value="">یک کاربر را انتخاب کن</option>
+                        @foreach (var user in users)
+                        {
+                            <option value="@user.Id">@user.FullName - @user.Mobile</option>
+                        }
+                    </select>
+                </label>
+                <div class="admin-actions" style="align-self:end">
+                    <AuthorizeView Policy="@PermissionNames.AdminSecurityManage">
+                        <Authorized><button class="admin-primary" @onclick="SaveUserRolesAsync" disabled="@(selectedUser is null || savingUserRoles)">@(savingUserRoles ? "در حال ذخیره..." : "ذخیره نقش‌های کاربر")</button></Authorized>
+                    </AuthorizeView>
+                </div>
+            </div>
+            @if (selectedUser is not null)
+            {
+                <div class="admin-permission-grid">
+                    <article class="admin-mini-card">
+                        <h3>Roleهای کاربر</h3>
+                        @foreach (var role in roles.OrderBy(x => x.Name))
+                        {
+                            <label class="check-row">
+                                <input type="checkbox" checked="@selectedUserRoleNames.Contains(role.Name)" @onchange="e => ToggleUserRole(role.Name, e)" />
+                                <span><b>@role.DisplayName</b><small>@role.Name</small></span>
+                            </label>
+                        }
+                    </article>
+                </div>
+            }
+        </section>
+
+        <section class="admin-card">
+            <div class="section-title"><h2>لاگ ورود کاربران</h2><span>@loginAudits.Count رکورد</span></div>
+            <p class="admin-muted">هر ورود موفق یا ناموفق، ماندگاری نشست و آخرین مشاهده کاربر اینجا ثبت می‌شود.</p>
+            <div class="admin-table-wrap">
+                <table>
+                    <thead><tr><th>وضعیت</th><th>کاربر</th><th>موبایل</th><th>زمان ورود</th><th>آخرین فعالیت</th><th>انقضای توکن</th><th>IP</th><th>علت خطا</th></tr></thead>
+                    <tbody>
+                        @foreach (var audit in loginAudits.OrderByDescending(x => x.LoggedInAt).Take(80))
+                        {
+                            <tr>
+                                <td>@(audit.Succeeded ? "موفق" : "ناموفق")</td>
+                                <td><b>@(audit.FullName ?? "-")</b><br /><small>@(audit.SessionKey.Length > 10 ? audit.SessionKey.Substring(0, 10) : audit.SessionKey)</small></td>
+                                <td>@audit.Mobile</td>
+                                <td>@audit.LoggedInAt.ToLocalTime().ToString("yyyy/MM/dd HH:mm")</td>
+                                <td>@(audit.LastSeenAt?.ToLocalTime().ToString("yyyy/MM/dd HH:mm") ?? "-")</td>
+                                <td>@(audit.TokenExpiresAt?.ToLocalTime().ToString("yyyy/MM/dd HH:mm") ?? "-")</td>
+                                <td>@(audit.IpAddress ?? "-")</td>
+                                <td>@(audit.FailureReason ?? "-")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="admin-card">
+            <div class="section-title"><h2>کاربران</h2><span>@users.Count کاربر</span></div>
+            <div class="admin-table-wrap">
+                <table>
+                    <thead><tr><th>نام</th><th>موبایل</th><th>ایمیل</th><th>نقش‌ها</th><th>تعداد Permission</th></tr></thead>
+                    <tbody>
+                        @foreach (var user in users)
+                        {
+                            <tr>
+                                <td><b>@user.FullName</b></td>
+                                <td>@user.Mobile</td>
+                                <td>@user.Email</td>
+                                <td>@string.Join("، ", user.Roles)</td>
+                                <td>@user.Permissions.Count</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+</section>
+
+@code {
+    private bool loading = true;
+    private bool saving;
+    private bool savingUserRoles;
+    private bool savingAdminPage;
+    private string? message;
+    private IReadOnlyCollection<PermissionDto> permissions = Array.Empty<PermissionDto>();
+    private IReadOnlyCollection<RoleSecurityDto> roles = Array.Empty<RoleSecurityDto>();
+    private IReadOnlyCollection<AdminPageAccessDto> adminPages = Array.Empty<AdminPageAccessDto>();
+    private IReadOnlyCollection<AdminUserDto> users = Array.Empty<AdminUserDto>();
+    private IReadOnlyCollection<LoginAuditDto> loginAudits = Array.Empty<LoginAuditDto>();
+    private string? selectedRoleId;
+    private HashSet<string> selectedPermissionKeys = [];
+    private string? selectedAdminPageId;
+    private UpsertAdminPageAccessRequest? editAdminPage;
+    private string? selectedUserId;
+    private HashSet<string> selectedUserRoleNames = [];
+
+    private string? SelectedRoleId
+    {
+        get => selectedRoleId;
+        set
+        {
+            selectedRoleId = value;
+            SyncSelectedRolePermissions();
+        }
+    }
+
+    private RoleSecurityDto? selectedRole => Guid.TryParse(selectedRoleId, out var id) ? roles.FirstOrDefault(x => x.Id == id) : null;
+
+
+
+    private string? SelectedAdminPageId
+    {
+        get => selectedAdminPageId;
+        set
+        {
+            selectedAdminPageId = value;
+            SyncSelectedAdminPage();
+        }
+    }
+
+    private AdminPageAccessDto? selectedAdminPage => Guid.TryParse(selectedAdminPageId, out var pageId) ? adminPages.FirstOrDefault(x => x.Id == pageId) : null;
+
+    private string? SelectedUserId
+    {
+        get => selectedUserId;
+        set
+        {
+            selectedUserId = value;
+            SyncSelectedUserRoles();
+        }
+    }
+
+    private AdminUserDto? selectedUser => Guid.TryParse(selectedUserId, out var id) ? users.FirstOrDefault(x => x.Id == id) : null;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        try
+        {
+            permissions = (await Admin.PermissionsAsync()).RequireUiData();
+            roles = (await Admin.RolesAsync()).RequireUiData();
+            adminPages = (await Admin.AdminPagesAsync()).RequireUiData();
+            users = (await Admin.SecurityUsersAsync()).RequireUiData();
+            loginAudits = (await Admin.LoginAuditsAsync()).RequireUiData();
+            if (selectedRoleId is null && roles.Count > 0) SelectedRoleId = roles.First().Id.ToString();
+            if (selectedAdminPageId is null && adminPages.Count > 0) SelectedAdminPageId = adminPages.OrderBy(x => x.SortOrder).First().Id.ToString();
+            if (selectedUserId is null && users.Count > 0) SelectedUserId = users.First().Id.ToString();
+            SyncSelectedRolePermissions();
+            SyncSelectedAdminPage();
+            SyncSelectedUserRoles();
+        }
+        catch (Exception ex) { message = ex.Message; }
+        finally { loading = false; }
+    }
+
+    private void TogglePermission(string key, ChangeEventArgs e)
+    {
+        if (e.Value is bool value && value) selectedPermissionKeys.Add(key);
+        else selectedPermissionKeys.Remove(key);
+    }
+
+    private async Task SaveRolePermissionsAsync()
+    {
+        if (selectedRole is null) return;
+        saving = true;
+        message = null;
+        try
+        {
+            var request = new AssignRolePermissionsRequest { Permissions = selectedPermissionKeys.OrderBy(x => x).ToList() };
+            var validation = ObjectGraphValidator.Validate(request);
+            if (validation.Count > 0)
+            {
+                message = string.Join(" ", validation.Select(x => x.ErrorMessage).Distinct());
+                return;
+            }
+            (await Admin.UpdateRolePermissionsAsync(selectedRole.Id, request)).RequireUiData();
+            message = "دسترسی‌های نقش ذخیره شد. برای اعمال در توکن کاربران، کاربر باید دوباره وارد شود.";
+            await LoadAsync();
+        }
+        catch (Exception ex) { message = ex.Message; }
+        finally { saving = false; }
+    }
+
+
+
+
+    private async Task SaveAdminPageAsync()
+    {
+        if (selectedAdminPage is null || editAdminPage is null) return;
+        savingAdminPage = true;
+        message = null;
+        try
+        {
+            var validation = ObjectGraphValidator.Validate(editAdminPage);
+            if (validation.Count > 0)
+            {
+                message = string.Join(" ", validation.Select(x => x.ErrorMessage).Distinct());
+                return;
+            }
+            (await Admin.UpdateAdminPageAsync(selectedAdminPage.Id, editAdminPage)).RequireUiData();
+            message = "نگاشت صفحه به Permission ذخیره شد.";
+            await LoadAsync();
+        }
+        catch (Exception ex) { message = ex.Message; }
+        finally { savingAdminPage = false; }
+    }
+
+    private void SyncSelectedAdminPage()
+    {
+        if (selectedAdminPage is null) { editAdminPage = null; return; }
+        editAdminPage = new UpsertAdminPageAccessRequest
+        {
+            PageKey = selectedAdminPage.PageKey,
+            Title = selectedAdminPage.Title,
+            Path = selectedAdminPage.Path,
+            RequiredPermissionKey = selectedAdminPage.RequiredPermissionKey,
+            MenuGroup = selectedAdminPage.MenuGroup,
+            Icon = selectedAdminPage.Icon,
+            Description = selectedAdminPage.Description,
+            ShowInMenu = selectedAdminPage.ShowInMenu,
+            IsActive = selectedAdminPage.IsActive,
+            SortOrder = selectedAdminPage.SortOrder
+        };
+    }
+
+    private void ToggleUserRole(string roleName, ChangeEventArgs e)
+    {
+        if (e.Value is bool value && value) selectedUserRoleNames.Add(roleName);
+        else selectedUserRoleNames.Remove(roleName);
+    }
+
+    private async Task SaveUserRolesAsync()
+    {
+        if (selectedUser is null) return;
+        savingUserRoles = true;
+        message = null;
+        try
+        {
+            var request = new AssignUserRolesRequest { Roles = selectedUserRoleNames.OrderBy(x => x).ToList() };
+            var validation = ObjectGraphValidator.Validate(request);
+            if (validation.Count > 0)
+            {
+                message = string.Join(" ", validation.Select(x => x.ErrorMessage).Distinct());
+                return;
+            }
+            (await Admin.UpdateUserRolesAsync(selectedUser.Id, request)).RequireUiData();
+            message = "Roleهای کاربر ذخیره شد. کاربر باید دوباره وارد شود تا توکن جدید بگیرد.";
+            await LoadAsync();
+        }
+        catch (Exception ex) { message = ex.Message; }
+        finally { savingUserRoles = false; }
+    }
+
+    private void SyncSelectedRolePermissions()
+    {
+        if (selectedRole is not null) selectedPermissionKeys = selectedRole.Permissions.ToHashSet();
+    }
+
+    private void SyncSelectedUserRoles()
+    {
+        if (selectedUser is not null) selectedUserRoleNames = selectedUser.Roles.ToHashSet();
+    }
+}

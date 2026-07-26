@@ -1,0 +1,59 @@
+@page "/register"
+@inject IAccountApiClient AccountApi
+@inject IAuthSessionStore Auth
+@inject ICartState Cart
+@inject ICartApiClient ServerCart
+@inject NavigationManager Navigation
+
+<SeoHead Title="ثبت‌نام در Tatakae" Description="ساخت حساب کاربری در فروشگاه گلدوزی Tatakae برای ثبت سفارش، سفارشی‌سازی و پیگیری خرید." Path="/register" Index="false" />
+<section class="auth-shell">
+    <div class="auth-card reveal">
+        <span class="eyebrow">create account</span>
+        <h1 class="title" style="font-size:34px;margin:12px 0">ثبت‌نام سریع</h1>
+        <EditForm Model="model" OnValidSubmit="RegisterAsync" class="auth-form">
+            <RecursiveDataAnnotationsValidator />
+            <ValidationSummary />
+            <label class="field-label">نام و نام خانوادگی<InputText class="input" @bind-Value="model.FullName" autocomplete="name" maxlength="100" /></label><ValidationMessage For="() => model.FullName" />
+            <label class="field-label">موبایل<InputText class="input" @bind-Value="model.Mobile" inputmode="tel" autocomplete="tel" maxlength="13" placeholder="09123456789" /></label><ValidationMessage For="() => model.Mobile" />
+            <label class="field-label">ایمیل اختیاری<InputText class="input" type="email" @bind-Value="model.Email" autocomplete="email" maxlength="150" /></label><ValidationMessage For="() => model.Email" />
+            <label class="field-label">رمز عبور<InputText class="input" type="password" @bind-Value="model.Password" autocomplete="new-password" minlength="6" maxlength="80" /></label><ValidationMessage For="() => model.Password" />
+            <button class="pill-btn" type="submit" disabled="@busy">@(busy ? "در حال ساخت حساب..." : "ثبت‌نام")</button>
+            @if (!string.IsNullOrWhiteSpace(message)) { <p class="form-message">@message</p> }
+        </EditForm>
+        <div class="auth-switch"><span>قبلاً ثبت‌نام کردی؟</span><a class="ghost" href="@LoginHref">ورود</a></div>
+    </div>
+</section>
+
+@code {
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+
+    private RegisterCustomerRequest model = new() { Password = "User1234" };
+    private bool busy;
+    private string? message;
+    private string LoginHref => string.IsNullOrWhiteSpace(ReturnUrl) ? "/login" : $"/login?returnUrl={Uri.EscapeDataString(ReturnUrl)}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.EnsureLoadedAsync();
+        await Cart.EnsureLoadedAsync(Auth.Current);
+    }
+
+    private async Task RegisterAsync()
+    {
+        busy = true; message = null;
+        try
+        {
+            model.FullName = model.FullName.Trim();
+            model.Mobile = IranianInputNormalizer.NormalizeIranianMobile(model.Mobile);
+            model.Email = string.IsNullOrWhiteSpace(model.Email) ? null : model.Email.Trim();
+            var session = (await AccountApi.RegisterAsync(model)).RequireUiData();
+            await Cart.MergeGuestCartIntoAccountAsync(session);
+            await Auth.SignInAsync(session);
+            (await ServerCart.MergeAsync(Cart.Items)).EnsureUiSuccess();
+            Navigation.NavigateTo(!string.IsNullOrWhiteSpace(ReturnUrl) && ReturnUrl.StartsWith('/') ? ReturnUrl : "/account");
+        }
+        catch (Exception ex) { message = ex.Message; }
+        finally { busy = false; }
+    }
+}

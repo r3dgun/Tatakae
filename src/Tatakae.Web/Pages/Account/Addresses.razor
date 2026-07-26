@@ -1,0 +1,257 @@
+@page "/account/addresses"
+@using Tatakae.Application.Contracts.Lookups
+@inject IAuthSessionStore Auth
+@inject IAccountApiClient AccountApi
+@inject IStoreApiClient StoreApi
+@inject NavigationManager Navigation
+
+<SeoHead Title="آدرس‌های من | Tatakae" Description="مدیریت آدرس‌های ارسال مشتری در فروشگاه Tatakae." Path="/account/addresses" Index="false" />
+<section class="section account-page" id="account-addresses">
+    <div class="wrap">
+        <div class="section-head reveal">
+            <div>
+                <span class="eyebrow">address book</span>
+                <h1 class="title" style="margin-top:14px">آدرس‌های ارسال</h1>
+                <p class="lead" style="margin-top:12px;max-width:760px">آدرس پیش‌فرض در Checkout خودکار انتخاب می‌شود؛ هر حساب می‌تواند چند آدرس برای گیرنده‌های مختلف داشته باشد.</p>
+            </div>
+            <a class="ghost" href="/account">بازگشت به حساب</a>
+        </div>
+
+        @if (!loaded)
+        {
+            <div class="ink-state"><h2>در حال دریافت آدرس‌ها...</h2><p>چند لحظه صبر کن.</p></div>
+        }
+        else if (!Auth.IsSignedIn)
+        {
+            <div class="panel pad reveal account-empty">
+                <h2>برای مدیریت آدرس‌ها وارد شو</h2>
+                <p class="lead">آدرس‌ها فقط برای حساب‌های واردشده ذخیره می‌شوند.</p>
+                <div class="auth-switch"><a class="pill-btn" href="/login?returnUrl=/account/addresses">ورود</a><a class="ghost" href="/register?returnUrl=/account/addresses">ثبت‌نام</a></div>
+            </div>
+        }
+        else
+        {
+            <div class="address-book-layout">
+                <article class="account-panel address-editor-panel">
+                    <span class="eyebrow">@(editingId.HasValue ? "edit address" : "new address")</span>
+                    <h3>@(editingId.HasValue ? "ویرایش آدرس" : "افزودن آدرس جدید")</h3>
+                    <EditForm Model="form" OnValidSubmit="SaveAddress" class="checkout-form">
+                        <RecursiveDataAnnotationsValidator />
+                        <ValidationSummary />
+                        <div class="form-grid">
+                            <label>نام گیرنده<InputText @bind-Value="form.RecipientName" autocomplete="name" maxlength="100" /><ValidationMessage For="() => form.RecipientName" /></label>
+                            <label>موبایل گیرنده<InputText @bind-Value="form.Mobile" inputmode="tel" autocomplete="tel" maxlength="13" /><ValidationMessage For="() => form.Mobile" /></label>
+                        </div>
+                        <div class="form-grid">
+                            <label>استان
+                                <select value="@form.Province" @onchange="OnProvinceChanged">
+                                    @foreach (var province in locations)
+                                    {
+                                        <option value="@province.Name">@province.Name</option>
+                                    }
+                                </select>
+                                <ValidationMessage For="() => form.Province" />
+                            </label>
+                            <label>شهر
+                                <select value="@form.City" @onchange="OnCityChanged">
+                                    @foreach (var city in FormCities)
+                                    {
+                                        <option value="@city.Name">@city.Name</option>
+                                    }
+                                </select>
+                                <ValidationMessage For="() => form.City" />
+                            </label>
+                        </div>
+                        <div class="form-grid">
+                            <label>کد پستی<InputText @bind-Value="form.PostalCode" inputmode="numeric" autocomplete="postal-code" maxlength="10" /><ValidationMessage For="() => form.PostalCode" /></label>
+                            <label>پلاک<InputText @bind-Value="form.Plaque" maxlength="20" /><ValidationMessage For="() => form.Plaque" /></label>
+                        </div>
+                        <label>واحد<InputText @bind-Value="form.Unit" maxlength="20" /><ValidationMessage For="() => form.Unit" /></label>
+                        <label>آدرس کامل<InputTextArea @bind-Value="form.AddressLine" rows="4" maxlength="400" /><ValidationMessage For="() => form.AddressLine" /></label>
+                        <label class="inline-check"><InputCheckbox @bind-Value="form.IsDefault" /> آدرس پیش‌فرض باشد</label>
+                        @if (!string.IsNullOrWhiteSpace(error))
+                        {
+                            <p class="form-error">@error</p>
+                        }
+                        <div class="address-form-actions">
+                            <button class="pill-btn" type="submit" disabled="@busy">@(busy ? "در حال ذخیره..." : "ذخیره آدرس")</button>
+                            @if (editingId.HasValue)
+                            {
+                                <button class="ghost" type="button" @onclick="ResetForm">لغو ویرایش</button>
+                            }
+                        </div>
+                    </EditForm>
+                </article>
+
+                <article class="account-panel address-list-panel">
+                    <span class="eyebrow">saved addresses</span>
+                    <h3>آدرس‌های ذخیره‌شده</h3>
+                    @if (addresses.Count == 0)
+                    {
+                        <p class="lead">هنوز آدرسی ذخیره نشده. اولین آدرس معمولاً آدرس پیش‌فرض Checkout می‌شود.</p>
+                    }
+                    else
+                    {
+                        <div class="address-card-list">
+                            @foreach (var address in addresses)
+                            {
+                                <div class="address-card @(address.IsDefault ? "default" : string.Empty)">
+                                    <div class="address-card-head">
+                                        <strong>@address.RecipientName</strong>
+                                        @if (address.IsDefault)
+                                        {
+                                            <span>پیش‌فرض</span>
+                                        }
+                                    </div>
+                                    <p>@address.Province، @address.City، @address.AddressLine</p>
+                                    <small>@address.Mobile · کدپستی @address.PostalCode @(!string.IsNullOrWhiteSpace(address.Plaque) ? $"· پلاک {address.Plaque}" : string.Empty) @(!string.IsNullOrWhiteSpace(address.Unit) ? $"· واحد {address.Unit}" : string.Empty)</small>
+                                    <div class="address-card-actions">
+                                        <button class="ghost" type="button" @onclick="() => EditAddress(address)">ویرایش</button>
+                                        <button class="ghost" type="button" @onclick="() => MakeDefault(address)">پیش‌فرض</button>
+                                        <button class="ghost danger" type="button" @onclick="() => DeleteAddress(address.Id)">حذف</button>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </article>
+            </div>
+        }
+    </div>
+</section>
+
+@code {
+    private List<CustomerAddressDto> addresses = [];
+    private IReadOnlyCollection<ProvinceLocationDto> locations = Array.Empty<ProvinceLocationDto>();
+    private IReadOnlyCollection<CityLocationDto> FormCities => locations.FirstOrDefault(x => x.Name == form.Province)?.Cities ?? Array.Empty<CityLocationDto>();
+    private CustomerAddressRequest form = new();
+    private Guid? editingId;
+    private bool loaded;
+    private bool busy;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.EnsureLoadedAsync();
+        if (!Auth.IsSignedIn)
+        {
+            loaded = true;
+            return;
+        }
+
+        locations = (await StoreApi.GetLocationsAsync()).RequireUiData();
+        PrefillEmptyForm();
+        await LoadAddresses();
+        loaded = true;
+    }
+
+    private async Task LoadAddresses()
+    {
+        addresses = ((await AccountApi.AddressesAsync()).RequireUiData()).OrderByDescending(x => x.IsDefault).ToList();
+    }
+
+    private void PrefillEmptyForm()
+    {
+        form = new CustomerAddressRequest
+        {
+            RecipientName = Auth.Current?.FullName ?? string.Empty,
+            Mobile = Auth.Current?.Mobile ?? string.Empty,
+            Province = locations.FirstOrDefault(x => x.Name == "تهران")?.Name ?? locations.FirstOrDefault()?.Name ?? "تهران",
+            City = locations.FirstOrDefault(x => x.Name == "تهران")?.Cities.FirstOrDefault(x => x.Name == "تهران")?.Name ?? locations.FirstOrDefault()?.Cities.FirstOrDefault()?.Name ?? "تهران",
+            IsDefault = addresses.Count == 0
+        };
+        editingId = null;
+    }
+
+    private void OnProvinceChanged(ChangeEventArgs args)
+    {
+        form.Province = args.Value?.ToString() ?? "تهران";
+        form.City = FormCities.FirstOrDefault()?.Name ?? string.Empty;
+    }
+
+    private void OnCityChanged(ChangeEventArgs args)
+    {
+        form.City = args.Value?.ToString() ?? string.Empty;
+    }
+
+    private void EnsureFormLocationDefaults()
+    {
+        if (locations.Count == 0) return;
+        if (!locations.Any(x => x.Name == form.Province))
+        {
+            form.Province = locations.First().Name;
+        }
+
+        var cities = FormCities;
+        if (cities.Count > 0 && !cities.Any(x => x.Name == form.City))
+        {
+            form.City = cities.First().Name;
+        }
+    }
+
+    private async Task SaveAddress()
+    {
+        busy = true;
+        error = null;
+        try
+        {
+            EnsureFormLocationDefaults();
+            form.RecipientName = form.RecipientName.Trim();
+            form.Mobile = IranianInputNormalizer.NormalizeIranianMobile(form.Mobile);
+            form.PostalCode = IranianInputNormalizer.NormalizeDigits(form.PostalCode);
+            form.AddressLine = form.AddressLine.Trim();
+            form.Plaque = string.IsNullOrWhiteSpace(form.Plaque) ? null : IranianInputNormalizer.NormalizeDigits(form.Plaque);
+            form.Unit = string.IsNullOrWhiteSpace(form.Unit) ? null : IranianInputNormalizer.NormalizeDigits(form.Unit);
+            (await AccountApi.SaveAddressAsync(editingId, form)).RequireUiData();
+            await LoadAddresses();
+            PrefillEmptyForm();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private void EditAddress(CustomerAddressDto address)
+    {
+        editingId = address.Id;
+        form = new CustomerAddressRequest
+        {
+            RecipientName = address.RecipientName,
+            Mobile = address.Mobile,
+            Province = address.Province,
+            City = address.City,
+            PostalCode = address.PostalCode,
+            AddressLine = address.AddressLine,
+            Plaque = address.Plaque,
+            Unit = address.Unit,
+            IsDefault = address.IsDefault
+        };
+        EnsureFormLocationDefaults();
+    }
+
+    private async Task MakeDefault(CustomerAddressDto address)
+    {
+        var model = new CustomerAddressRequest
+        {
+            RecipientName = address.RecipientName,
+            Mobile = address.Mobile,
+            Province = address.Province,
+            City = address.City,
+            PostalCode = address.PostalCode,
+            AddressLine = address.AddressLine,
+            Plaque = address.Plaque,
+            Unit = address.Unit,
+            IsDefault = true
+        };
+        (await AccountApi.SaveAddressAsync(address.Id, model)).RequireUiData();
+        await LoadAddresses();
+    }
+
+    private async Task DeleteAddress(Guid id)
+    {
+        (await AccountApi.DeleteAddressAsync(id)).EnsureUiSuccess();
+        await LoadAddresses();
+        if (editingId == id) ResetForm();
+    }
+
+    private void ResetForm() => PrefillEmptyForm();
+}

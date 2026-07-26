@@ -1,0 +1,56 @@
+@page "/admin/orders"
+@layout AdminLayout
+@attribute [Authorize(Policy = PermissionNames.AdminOrdersView)]
+@inject IAdminApiClient Admin
+
+<PageTitle>سفارش‌ها | Tatakae</PageTitle>
+<section class="admin-page">
+    <div class="admin-head"><div><p class="admin-kicker">ORDERS</p><h1>سفارش‌های گلدوزی</h1><p>از بررسی سفارش تا گلدوزی، کنترل کیفیت، ارسال و تحویل را مرحله‌ای کنترل کنید.</p></div></div>
+    @if(loading)
+    {
+        <div class="admin-placeholder">در حال دریافت سفارش‌ها...</div>
+    }
+    else
+    {
+        <div class="order-filter-bar">
+            <button class="@(selectedStatus is null ? "active" : "")" @onclick="() => selectedStatus = null">همه (@orders.Count)</button>
+            @foreach(var group in orders.GroupBy(x => x.Status).OrderBy(x => StatusSort(x.Key)))
+            {
+                <button class="@(selectedStatus == group.Key ? "active" : "")" @onclick="() => selectedStatus = group.Key">@group.First().StatusLabel (@group.Count())</button>
+            }
+        </div>
+        <div class="admin-order-grid">
+            @foreach(var order in FilteredOrders)
+            {
+                var firstLine = order.Lines.FirstOrDefault();
+                <article class="admin-order-card order-workflow-card @Tone(order.Status)">
+                    <header><div><span>@order.OrderNumber</span><small>@order.CustomerName · @order.CustomerMobile</small></div><b>@Currency.Format(order.Total)</b></header>
+                    <div class="admin-order-card-body">
+                        <span class="status-pill">@order.StatusLabel</span>
+                        <p>@order.Lines.Count آیتم · @order.Lines.Sum(x=>x.Quantity) لباس</p>
+                        @if(firstLine is not null)
+                        {
+                            <span class="studio-chip">@DesignLabel(firstLine.Embroidery) · @firstLine.Embroidery.ScalePercent% · @firstLine.Embroidery.RotationDegrees°</span>
+                        }
+                        @if(!string.IsNullOrWhiteSpace(order.TrackingCode))
+                        {
+                            <small>کد رهگیری: @order.TrackingCode</small>
+                        }
+                        <small>@order.CreatedAt.LocalDateTime.ToString("yyyy/MM/dd HH:mm")</small>
+                    </div>
+                    <footer><a href="@($"/admin/orders/{order.Id}")">مدیریت روند سفارش</a></footer>
+                </article>
+            }
+        </div>
+    }
+</section>
+@code{
+    private IReadOnlyCollection<OrderDto> orders=Array.Empty<OrderDto>();
+    private bool loading=true;
+    private string? selectedStatus;
+    private IEnumerable<OrderDto> FilteredOrders => string.IsNullOrWhiteSpace(selectedStatus) ? orders : orders.Where(x => x.Status == selectedStatus);
+    protected override async Task OnInitializedAsync(){orders=(await Admin.OrdersAsync()).RequireUiData();loading=false;}
+    private static string DesignLabel(EmbroideryConfigurationDto embroidery)=>string.Equals(embroidery.DesignSource,"ReadyMade",StringComparison.OrdinalIgnoreCase)?"محصول آماده گلدوزی‌شده":embroidery.DesignSource switch{"Upload"=>"طرح آپلودی","Text"=>"طرح متنی",_=>embroidery.MotifKey=="sword"?"شمشیر":embroidery.MotifKey=="cloud"?"ابر":"اژدها"};
+    private static int StatusSort(string status)=>status switch{"PendingPayment"=>1,"Paid"=>2,"ArtworkReview"=>3,"InEmbroidery"=>4,"QualityControl"=>5,"Packed"=>6,"Shipped"=>7,"Delivered"=>8,"Cancelled"=>9,"Refunded"=>10,_=>99};
+    private static string Tone(string status)=>status switch{"Cancelled" or "Refunded"=>"danger","Shipped" or "Delivered"=>"success","ArtworkReview"=>"warning","InEmbroidery"=>"primary",_=>""};
+}

@@ -1,0 +1,104 @@
+@page "/admin/products"
+@layout AdminLayout
+@attribute [Authorize(Policy = PermissionNames.AdminProductsView)]
+@inject IAdminApiClient Admin
+
+<PageTitle>مدیریت محصولات | Tatakae</PageTitle>
+
+<section class="admin-page">
+    <div class="admin-head">
+        <div>
+            <p class="admin-kicker">CATALOG / PRODUCTS</p>
+            <h1>محصولات و واریانت‌ها</h1>
+            <p>محصول آماده، محصول استودیویی، SKU، موجودی و تخفیف را از اینجا مدیریت کن.</p>
+        </div>
+        <div class="admin-actions-inline">
+            <a class="admin-secondary" href="/admin/inventory">موجودی و SKU</a>
+            <a class="admin-primary" href="/admin/products/new">+ محصول جدید</a>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="admin-placeholder">در حال دریافت محصولات...</div>
+    }
+    else
+    {
+        <section class="admin-card">
+            <div class="admin-table-wrap">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>محصول</th>
+                            <th>نوع فروش</th>
+                            <th>SKU</th>
+                            <th>موجودی</th>
+                            <th>قیمت شروع</th>
+                            <th>وضعیت</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var product in products)
+                        {
+                            var activeVariants = product.Variants.Where(x => x.IsActive).ToArray();
+                            var totalAvailable = activeVariants.Sum(x => x.AvailableQuantity > 0 ? x.AvailableQuantity : x.StockQuantity);
+                            var hasSale = activeVariants.Any(x => x.SalePrice is not null && x.SalePrice < x.RegularPrice);
+                            <tr>
+                                <td>
+                                    <div class="product-cell">
+                                        <img src="@(product.Images.FirstOrDefault()?.Url ?? "/ink/fallback-black.svg")" alt="@product.Name" />
+                                        <div>
+                                            <b>@product.Name</b>
+                                            <small dir="ltr">/@product.Slug</small>
+                                            <small>@product.CategoryName</small>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="status-badge @(product.SupportsEmbroidery ? "success" : "warning")">@(product.SupportsEmbroidery ? "استودیویی" : "آماده")</span>
+                                    @if (hasSale)
+                                    {
+                                        <span class="status-badge warning">تخفیف</span>
+                                    }
+                                </td>
+                                <td>@product.Variants.Count تنوع</td>
+                                <td>@totalAvailable عدد</td>
+                                <td>@Currency.Format(activeVariants.Select(x => x.EffectivePrice).DefaultIfEmpty(0m).Min())</td>
+                                <td>
+                                    <span class="status-badge @(product.IsInStock ? "success" : "danger")">@(product.IsInStock ? "موجود" : "ناموجود")</span>
+                                    <span class="status-badge @(product.Seo.AllowIndex ? "success" : "warning")">@(product.Seo.AllowIndex ? "Index" : "Noindex")</span>
+                                </td>
+                                <td>
+                                    <div class="table-actions">
+                                        <a href="@($"/admin/products/{product.Id}")">ویرایش</a>
+                                        <button class="danger" @onclick="() => Delete(product)">حذف</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+</section>
+
+@code {
+    private IReadOnlyCollection<ProductDetailDto> products = Array.Empty<ProductDetailDto>();
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        products = (await Admin.ProductsAsync()).RequireUiData();
+        loading = false;
+    }
+
+    private async Task Delete(ProductDetailDto product)
+    {
+        (await Admin.DeleteProductAsync(product.Id)).EnsureUiSuccess();
+        await Load();
+    }
+}

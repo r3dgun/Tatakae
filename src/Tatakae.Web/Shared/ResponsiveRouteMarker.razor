@@ -1,0 +1,41 @@
+@using Microsoft.AspNetCore.Components.Routing
+@using Tatakae.Web.Responsive
+@implements IDisposable
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+@code {
+    protected override void OnInitialized()
+        => Navigation.LocationChanged += OnLocationChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await ApplyAsync();
+        }
+    }
+
+    private async void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        try
+        {
+            await ApplyAsync(args.Location);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Navigation can complete while the WebAssembly runtime is shutting down.
+        }
+    }
+
+    private ValueTask ApplyAsync(string? absoluteUri = null)
+    {
+        var uri = absoluteUri is null ? Navigation.Uri : absoluteUri;
+        var relativePath = Navigation.ToBaseRelativePath(uri);
+        var page = ResponsivePageCatalog.Resolve(relativePath);
+        return JS.InvokeVoidAsync("tatakaeResponsive.setPage", page, relativePath);
+    }
+
+    public void Dispose()
+        => Navigation.LocationChanged -= OnLocationChanged;
+}

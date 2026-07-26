@@ -1,0 +1,131 @@
+@page "/account/wishlist"
+@inject IAuthSessionStore Auth
+@inject IWishlistApiClient WishlistApi
+@inject IJSRuntime JS
+
+<SeoHead Title="علاقه‌مندی‌ها | Tatakae" Description="محصول‌های ذخیره‌شده و پیشنهادهای شخصی حساب کاربری Tatakae." Path="/account/wishlist" Index="false" Follow="false" />
+
+<section class="section" id="wishlist">
+    <div class="wrap">
+        <div class="section-head reveal">
+            <div>
+                <span class="eyebrow">wishlist / recent views</span>
+                <h1 class="title" style="margin-top:14px">علاقه‌مندی‌ها</h1>
+                <p class="lead" style="margin-top:12px;max-width:760px">محصول‌هایی که ذخیره کرده‌ای، محصول‌های اخیراً دیده‌شده و پیشنهادهای مرتبط اینجا جمع می‌شوند.</p>
+            </div>
+            <a class="ghost" href="/shop">ادامه خرید</a>
+        </div>
+
+        @if (loading)
+        {
+            <div class="loading-state">در حال دریافت علاقه‌مندی‌ها...</div>
+        }
+        else if (!Auth.IsSignedIn)
+        {
+            <div class="ink-auth-required">
+                <div><span class="eyebrow">login required</span><h2>برای ذخیره علاقه‌مندی وارد شو</h2><p>بعد از ورود، علاقه‌مندی‌ها روی حساب کاربری ذخیره می‌شوند.</p></div>
+                <div class="ink-auth-actions"><a class="pill-btn" href="/login?returnUrl=/account/wishlist">ورود</a><a class="ghost" href="/register?returnUrl=/account/wishlist">ثبت‌نام</a></div>
+            </div>
+        }
+        else
+        {
+            <section class="wishlist-panel">
+                <div class="section-title"><h2>ذخیره‌شده‌ها</h2><span>@(wishlist?.Count ?? 0) محصول</span></div>
+                @if (wishlist is null || wishlist.Items.Count == 0)
+                {
+                    <div class="empty-state">هنوز محصولی ذخیره نکرده‌ای.</div>
+                }
+                else
+                {
+                    <div class="ink-commerce-grid wishlist-grid">
+                        @foreach (var product in wishlist.Items)
+                        {
+                            <div class="recommendation-wrap">
+                                <button type="button" class="mini-remove" @onclick="async () => await RemoveAsync(product.Id)">حذف</button>
+                                <ProductCard Product="product" />
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
+
+            <section class="wishlist-panel">
+                <div class="section-title"><h2>پیشنهاد برای شما</h2><span>بر اساس علاقه‌مندی‌ها</span></div>
+                @if (recommendations.Count == 0)
+                {
+                    <div class="empty-state">برای پیشنهاد دقیق‌تر چند محصول را ذخیره کن.</div>
+                }
+                else
+                {
+                    <div class="ink-commerce-grid wishlist-grid">
+                        @foreach (var item in recommendations)
+                        {
+                            <div class="recommendation-wrap">
+                                <span class="recommendation-reason">@item.Reason</span>
+                                <ProductCard Product="item.Product" />
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
+        }
+
+        <section class="wishlist-panel">
+            <div class="section-title"><h2>اخیراً دیده‌شده</h2><span>روی همین دستگاه</span></div>
+            @if (recentlyViewed.Count == 0)
+            {
+                <div class="empty-state">هنوز محصولی در این دستگاه دیده نشده است.</div>
+            }
+            else
+            {
+                <div class="ink-commerce-grid wishlist-grid">
+                    @foreach (var product in recentlyViewed)
+                    {
+                        <ProductCard Product="product" />
+                    }
+                </div>
+            }
+        </section>
+    </div>
+</section>
+
+@code {
+    private WishlistDto? wishlist;
+    private IReadOnlyCollection<ProductRecommendationDto> recommendations = Array.Empty<ProductRecommendationDto>();
+    private IReadOnlyCollection<ProductCardDto> recentlyViewed = Array.Empty<ProductCardDto>();
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.EnsureLoadedAsync();
+        recentlyViewed = await LoadRecentAsync();
+        if (Auth.IsSignedIn)
+        {
+            wishlist = (await WishlistApi.GetAsync()).RequireUiData();
+            recommendations = (await WishlistApi.RecommendationsAsync(take: 8)).RequireUiData();
+        }
+        loading = false;
+    }
+
+    private async Task RemoveAsync(Guid productId)
+    {
+        (await WishlistApi.RemoveAsync(productId)).EnsureUiSuccess();
+        wishlist = (await WishlistApi.GetAsync()).RequireUiData();
+        recommendations = (await WishlistApi.RecommendationsAsync(take: 8)).RequireUiData();
+    }
+
+    private async Task<IReadOnlyCollection<ProductCardDto>> LoadRecentAsync()
+    {
+        try
+        {
+            var json = await JS.InvokeAsync<string?>("tatakaeEngagement.getViewedProductsJson");
+            return string.IsNullOrWhiteSpace(json)
+                ? Array.Empty<ProductCardDto>()
+                : JsonSerializer.Deserialize<ProductCardDto[]>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? Array.Empty<ProductCardDto>();
+        }
+        catch
+        {
+            return Array.Empty<ProductCardDto>();
+        }
+    }
+}

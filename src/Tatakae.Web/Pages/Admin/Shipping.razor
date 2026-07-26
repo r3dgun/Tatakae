@@ -1,0 +1,90 @@
+@page "/admin/shipping"
+@layout AdminLayout
+@attribute [Authorize(Policy = PermissionNames.AdminShippingView)]
+@using Tatakae.Application.Contracts.Shipping
+@inject IAdminApiClient Admin
+
+<h1>روش‌های ارسال</h1>
+<p class="admin-muted">اینجا روش‌های ارسال دستی فروشگاه را تعریف می‌کنی تا مشتری در Checkout انتخاب کند.</p>
+
+<div class="admin-grid two">
+    <section class="admin-card">
+        <h3>@(editingId.HasValue ? "ویرایش روش ارسال" : "روش ارسال جدید")</h3>
+        <EditForm Model="form" OnValidSubmit="Save">
+            <RecursiveDataAnnotationsValidator />
+            <ValidationSummary />
+            <label>کد لاتین<InputText @bind-Value="form.Code" placeholder="post-standard" /></label>
+            <label>عنوان<InputText @bind-Value="form.Title" placeholder="پست پیشتاز" /></label>
+            <label>توضیح<InputTextArea @bind-Value="form.Description" rows="3" /></label>
+            <div class="form-grid">
+                <label>هزینه پایه<InputNumber @bind-Value="form.BasePrice" /></label>
+                <label>ارسال رایگان از مبلغ<InputNumber @bind-Value="form.FreeShippingThreshold" /></label>
+            </div>
+            <div class="form-grid">
+                <label>حداقل روز<InputNumber @bind-Value="form.EstimatedMinDays" /></label>
+                <label>حداکثر روز<InputNumber @bind-Value="form.EstimatedMaxDays" /></label>
+            </div>
+            <div class="form-grid">
+                <label>ترتیب نمایش<InputNumber @bind-Value="form.SortOrder" /></label>
+                <label class="check"><InputCheckbox @bind-Value="form.IsDefault" /> پیش‌فرض</label>
+            </div>
+            <label class="check"><InputCheckbox @bind-Value="form.SupportsCashOnDelivery" /> امکان پرداخت در محل</label>
+            <label class="check"><InputCheckbox @bind-Value="form.IsActive" /> فعال</label>
+            @if (!string.IsNullOrWhiteSpace(error)) { <p class="form-error">@error</p> }
+            <div class="admin-actions"><button class="admin-primary" disabled="@busy">ذخیره</button><button type="button" class="admin-ghost" @onclick="Reset">پاک کردن فرم</button></div>
+        </EditForm>
+    </section>
+
+    <section class="admin-card">
+        <h3>روش‌های فعلی</h3>
+        @if (methods.Count == 0)
+        {
+            <p class="admin-muted">هنوز روش ارسالی تعریف نشده است.</p>
+        }
+        else
+        {
+            <div class="admin-list">
+                @foreach (var item in methods)
+                {
+                    <article class="admin-list-item">
+                        <div><b>@item.Title</b><small>@item.Code · @(item.Price == 0 ? "رایگان" : Currency.Format(item.BasePrice))</small><small>@item.Description</small></div>
+                        <div class="admin-row-actions"><button @onclick="() => Edit(item)">ویرایش</button><button @onclick="() => Delete(item.Id)">حذف</button></div>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private IReadOnlyCollection<ShippingMethodDto> methods = Array.Empty<ShippingMethodDto>();
+    private UpsertManualShippingMethodRequest form = new() { IsActive = true, Code = "post-standard", EstimatedMinDays = 3, EstimatedMaxDays = 7 };
+    private Guid? editingId;
+    private bool busy;
+    private string? error;
+
+    protected override async Task OnInitializedAsync() => await Load();
+    private async Task Load() => methods = (await Admin.ShippingMethodsAsync()).RequireUiData();
+
+    private async Task Save()
+    {
+        busy = true; error = null;
+        try
+        {
+            if (editingId.HasValue) (await Admin.UpdateShippingMethodAsync(editingId.Value, form)).RequireUiData(); else (await Admin.CreateShippingMethodAsync(form)).RequireUiData();
+            Reset();
+            await Load();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private void Edit(ShippingMethodDto item)
+    {
+        editingId = item.Id;
+        form = new UpsertManualShippingMethodRequest { Code = item.Code, Title = item.Title, Description = item.Description, BasePrice = item.BasePrice, FreeShippingThreshold = item.FreeShippingThreshold, EstimatedMinDays = item.EstimatedMinDays, EstimatedMaxDays = item.EstimatedMaxDays, SupportsCashOnDelivery = item.SupportsCashOnDelivery, IsDefault = item.IsDefault, IsActive = item.IsActive };
+    }
+
+    private async Task Delete(Guid id) { (await Admin.DeleteShippingMethodAsync(id)).EnsureUiSuccess(); await Load(); }
+    private void Reset() { editingId = null; form = new UpsertManualShippingMethodRequest { IsActive = true, Code = "", EstimatedMinDays = 3, EstimatedMaxDays = 7 }; }
+}

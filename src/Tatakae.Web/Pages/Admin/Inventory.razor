@@ -1,0 +1,146 @@
+@page "/admin/inventory"
+@layout AdminLayout
+@attribute [Authorize(Policy = PermissionNames.AdminProductsView)]
+@inject IAdminApiClient Admin
+
+<PageTitle>موجودی و SKU | Tatakae Admin</PageTitle>
+
+<section class="admin-page">
+    <div class="admin-head">
+        <div>
+            <p class="admin-kicker">INVENTORY / SKU</p>
+            <h1>موجودی و SKU</h1>
+            <p>مدیریت سریع موجودی قابل فروش، SKUهای کم‌موجودی و واریانت‌های ناموجود.</p>
+        </div>
+        <a class="admin-primary" href="/admin/products/new">+ محصول جدید</a>
+    </div>
+
+    @if (loading)
+    {
+        <div class="admin-placeholder">در حال دریافت موجودی...</div>
+    }
+    else
+    {
+        <section class="admin-card">
+            <div class="section-title">
+                <h2>خلاصه</h2>
+                <button class="small-button" @onclick="Load">به‌روزرسانی</button>
+            </div>
+            <div class="admin-stats compact">
+                <div><b>@items.Count</b><span>SKU</span></div>
+                <div><b>@items.Count(x => x.AvailableQuantity <= 0)</b><span>ناموجود</span></div>
+                <div><b>@items.Count(x => x.IsLowStock)</b><span>کم‌موجودی</span></div>
+                <div><b>@items.Sum(x => x.AvailableQuantity)</b><span>موجود قابل فروش</span></div>
+            </div>
+        </section>
+
+        <section class="admin-card">
+            <div class="section-title"><h2>لیست موجودی</h2><input placeholder="جستجو محصول / SKU" @bind="search" @bind:event="oninput" /></div>
+            <div class="admin-table-wrap">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>محصول</th>
+                            <th>SKU</th>
+                            <th>سایز/رنگ</th>
+                            <th>کل</th>
+                            <th>رزرو</th>
+                            <th>قابل فروش</th>
+                            <th>وضعیت</th>
+                            <th>اصلاح موجودی</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Filtered)
+                        {
+                            <tr class="@(item.AvailableQuantity <= 0 ? "inventory-row-empty" : item.IsLowStock ? "inventory-row-low" : null)">
+                                <td><strong>@item.ProductName</strong></td>
+                                <td dir="ltr">@item.Sku</td>
+                                <td><span class="color-dot" style="background:@item.ColorHex"></span> @item.Size / @item.ColorName</td>
+                                <td>@item.StockQuantity</td>
+                                <td>@item.ReservedQuantity</td>
+                                <td>@item.AvailableQuantity</td>
+                                <td>@Status(item)</td>
+                                <td>
+                                    <div class="inventory-actions">
+                                        <input type="number" min="-999999" max="999999" step="1" inputmode="numeric" @bind="deltas[item.VariantId]" placeholder="+/-" />
+                                        <button class="small-button" @onclick="() => Adjust(item)">ثبت</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(message))
+            {
+                <p class="form-message">@message</p>
+            }
+        </section>
+    }
+</section>
+
+@code {
+    private List<InventoryVariantDto> items = [];
+    private readonly Dictionary<Guid, int> deltas = [];
+    private bool loading = true;
+    private string? message;
+    private string search = string.Empty;
+
+    private IEnumerable<InventoryVariantDto> Filtered => string.IsNullOrWhiteSpace(search)
+        ? items.OrderByDescending(x => x.IsLowStock).ThenBy(x => x.ProductName).ThenBy(x => x.Sku)
+        : items.Where(x => x.ProductName.Contains(search, StringComparison.OrdinalIgnoreCase) || x.Sku.Contains(search, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(x => x.IsLowStock).ThenBy(x => x.ProductName).ThenBy(x => x.Sku);
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        message = null;
+        items = ((await Admin.InventoryAsync()).RequireUiData()).ToList();
+        foreach (var item in items)
+        {
+            deltas.TryAdd(item.VariantId, 0);
+        }
+        loading = false;
+    }
+
+    private async Task Adjust(InventoryVariantDto item)
+    {
+        var delta = deltas.TryGetValue(item.VariantId, out var value) ? value : 0;
+        var request = new InventoryAdjustmentRequest
+        {
+            VariantId = item.VariantId,
+            QuantityDelta = delta,
+            Reason = delta > 0 ? "Restock" : "ManualCorrection",
+            Note = "اصلاح دستی از پنل موجودی"
+        };
+        var validation = ObjectGraphValidator.Validate(request);
+        if (validation.Count > 0)
+        {
+            message = string.Join(" ", validation.Select(x => x.ErrorMessage).Distinct());
+            return;
+        }
+
+        try
+        {
+            (await Admin.AdjustInventoryAsync(item.VariantId, request)).RequireUiData();
+            deltas[item.VariantId] = 0;
+            await Load();
+            message = "موجودی ثبت شد.";
+        }
+        catch (Exception ex)
+        {
+            message = ex.Message;
+        }
+    }
+
+    private static string Status(InventoryVariantDto item)
+    {
+        if (!item.IsActive) return "غیرفعال";
+        if (item.AvailableQuantity <= 0) return "ناموجود";
+        if (item.IsLowStock) return "کم‌موجودی";
+        return "موجود";
+    }
+}

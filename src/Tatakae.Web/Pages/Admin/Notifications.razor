@@ -1,0 +1,142 @@
+@page "/admin/notifications"
+@layout AdminLayout
+@attribute [Authorize(Policy = PermissionNames.AdminNotificationsView)]
+@inject IAdminApiClient Admin
+
+<HeadContent><meta name="robots" content="noindex,nofollow" /></HeadContent>
+<section class="admin-page">
+    <div class="admin-page-head">
+        <div><span>NOTIFICATION CENTER</span><h1>مرکز اعلان‌ها</h1></div>
+        <button class="admin-action" @onclick="Load">تازه‌سازی</button>
+    </div>
+
+    <div class="admin-filter-bar notification-filter-bar">
+        <select @bind="filter.Status"><option value="">همه وضعیت‌ها</option><option>Queued</option><option>Sent</option><option>Failed</option><option>Cancelled</option></select>
+        <select @bind="filter.Channel"><option value="">همه کانال‌ها</option><option>InApp</option><option>Sms</option><option>Email</option><option>Admin</option></select>
+        <select @bind="filter.Type"><option value="">همه نوع‌ها</option><option>OrderCreated</option><option>PaymentSucceeded</option><option>OrderStatusChanged</option><option>ShipmentTrackingAdded</option><option>Manual</option></select>
+        <input placeholder="جستجو در موبایل، عنوان یا سفارش" @bind="filter.Search" />
+        <button class="admin-action" @onclick="Load">فیلتر</button>
+    </div>
+
+    <section class="admin-panel notification-composer">
+        <div class="admin-panel-head"><h2>ارسال اعلان دستی</h2><p>فعلاً ارسال واقعی پیامک/ایمیل به شکل صف و لاگ دمو ذخیره می‌شود.</p></div>
+        <EditForm Model="compose" OnValidSubmit="CreateManual">
+            <RecursiveDataAnnotationsValidator />
+            <ValidationSummary />
+            <div class="admin-form-grid">
+                <label>موبایل مشتری
+                    <InputText @bind-Value="compose.CustomerMobile" inputmode="tel" maxlength="30" placeholder="09120000000" />
+                    <ValidationMessage For="() => compose.CustomerMobile" />
+                </label>
+                <label>کانال
+                    <InputSelect @bind-Value="compose.Channel"><option>InApp</option><option>Sms</option><option>Email</option><option>Admin</option></InputSelect>
+                    <ValidationMessage For="() => compose.Channel" />
+                </label>
+                <label>نوع
+                    <InputSelect @bind-Value="compose.Type"><option>Manual</option><option>AdminTask</option><option>OrderStatusChanged</option></InputSelect>
+                    <ValidationMessage For="() => compose.Type" />
+                </label>
+                <label>عنوان
+                    <InputText @bind-Value="compose.Subject" maxlength="180" />
+                    <ValidationMessage For="() => compose.Subject" />
+                </label>
+                <label class="wide">متن
+                    <InputTextArea rows="3" maxlength="2000" @bind-Value="compose.Body" />
+                    <ValidationMessage For="() => compose.Body" />
+                </label>
+                <label>لینک اقدام
+                    <InputText @bind-Value="compose.ActionUrl" maxlength="600" placeholder="/account/orders" />
+                    <ValidationMessage For="() => compose.ActionUrl" />
+                </label>
+            </div>
+            <button type="submit" class="admin-action">ثبت اعلان</button>
+        </EditForm>
+        @if (!string.IsNullOrWhiteSpace(message))
+        {
+            <p class="admin-note">@message</p>
+        }
+    </section>
+
+    @if (loading)
+    {
+        <div class="admin-empty">در حال دریافت اعلان‌ها...</div>
+    }
+    else
+    {
+        <div class="admin-kpi-grid seo-kpi-grid">
+            <article><span>کل</span><strong>@items.Count</strong><small>اعلان</small></article>
+            <article><span>ارسال شده</span><strong>@items.Count(x => x.Status == "Sent")</strong><small>log</small></article>
+            <article><span>در صف</span><strong>@items.Count(x => x.Status == "Queued")</strong><small>pending</small></article>
+            <article><span>ناموفق</span><strong>@items.Count(x => x.Status == "Failed")</strong><small>failed</small></article>
+        </div>
+
+        <section class="admin-panel">
+            <div class="admin-table-wrap">
+                <table class="admin-table">
+                    <thead><tr><th>زمان</th><th>گیرنده</th><th>نوع</th><th>کانال</th><th>عنوان</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+                    <tbody>
+                        @foreach (var item in items)
+                        {
+                            <tr>
+                                <td>@item.CreatedAt.ToLocalTime().ToString("yyyy/MM/dd HH:mm")</td>
+                                <td>@item.Recipient</td>
+                                <td>@item.TypeLabel</td>
+                                <td>@item.ChannelLabel</td>
+                                <td><strong>@item.Subject</strong><br /><small>@item.Body</small></td>
+                                <td><span class="status-chip @(item.Status == "Sent" ? "success" : item.Status == "Failed" ? "danger" : "warning")">@item.StatusLabel</span></td>
+                                <td>
+                                    <button class="mini-action" @onclick='async () => await UpdateStatus(item.Id, "Sent")'>Sent</button>
+                                    <button class="mini-action danger" @onclick='async () => await UpdateStatus(item.Id, "Failed")'>Failed</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+</section>
+
+@code {
+    private readonly AdminNotificationFilter filter = new() { Take = 200 };
+    private readonly CreateNotificationRequest compose = new() { Channel = "InApp", Type = "Manual", Subject = "", Body = "", ActionUrl = "/account/notifications" };
+    private IReadOnlyCollection<NotificationDto> items = Array.Empty<NotificationDto>();
+    private bool loading = true;
+    private string? message;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        items = (await Admin.NotificationsAsync(filter)).RequireUiData();
+        loading = false;
+    }
+
+    private async Task CreateManual()
+    {
+        message = null;
+        try
+        {
+            compose.CustomerMobile = string.IsNullOrWhiteSpace(compose.CustomerMobile) ? null : IranianInputNormalizer.NormalizeIranianMobile(compose.CustomerMobile);
+            compose.Subject = compose.Subject.Trim();
+            compose.Body = compose.Body.Trim();
+            compose.ActionUrl = string.IsNullOrWhiteSpace(compose.ActionUrl) ? null : compose.ActionUrl.Trim();
+            (await Admin.CreateNotificationAsync(compose)).RequireUiData();
+            message = "اعلان ثبت شد.";
+            compose.Subject = string.Empty;
+            compose.Body = string.Empty;
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            message = ex.Message;
+        }
+    }
+
+    private async Task UpdateStatus(Guid id, string status)
+    {
+        (await Admin.UpdateNotificationStatusAsync(id, new UpdateNotificationStatusRequest { Status = status, FailureReason = status == "Failed" ? "ارسال دمو ناموفق علامت خورد." : null })).RequireUiData();
+        await Load();
+    }
+}

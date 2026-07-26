@@ -1,0 +1,249 @@
+@page "/shop"
+@page "/products"
+@inject IStoreApiClient Store
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<SeoHead Title="TATAKAE | فروشگاه گلدوزی" Description="فروشگاه لباس گلدوزی با استایل Ink Editorial؛ تی‌شرت، هودی، دورس و پولوشرت قابل سفارشی‌سازی." Path="/shop" JsonLd="@ShopJsonLd" />
+
+<section id="shop" class="ink-commerce-page panel" data-accent="paper">
+    <header class="ink-commerce-hero">
+        <div>
+            <p class="eyebrow">SHOP / EDITORIAL COMMERCE</p>
+            <h1>فروشگاه گلدوزی</h1>
+            <p>محصول‌ها دقیقاً با همان پوسته ادیتوریال نمایش داده می‌شوند؛ فیلترها از کارت محصول جدا هستند و مشتری بدون بهم‌ریختگی می‌تواند دسته، سایز، رنگ و قیمت را انتخاب کند.</p>
+        </div>
+        <div class="ink-commerce-count">
+            <article><span>محصول پیدا شده</span><b>@result.TotalCount</b></article>
+            <article><span>شروع قیمت</span><b>@Currency.Format(filters.MinPrice > 0 ? filters.MinPrice : result.Items.Select(x => x.StartingPrice).DefaultIfEmpty(0m).Min())</b></article>
+        </div>
+    </header>
+
+    <nav class="ink-category-strip" aria-label="دسته‌بندی محصولات">
+        <button type="button" class="@(string.IsNullOrWhiteSpace(query.Category) ? "active" : null)" @onclick="ClearCategory">همه محصولات</button>
+        @foreach (var category in categories.OrderBy(x => x.SortOrder))
+        {
+            <a class="@(query.Category == category.Slug ? "active" : null)" href="@($"/category/{category.Slug}")">@category.Name</a>
+        }
+    </nav>
+
+    <div class="ink-shop-body">
+        <main class="ink-shop-results">
+            <div class="ink-searchbar">
+                <input placeholder="جست‌وجو: هودی، تی‌شرت، لوگو..." @bind="query.Search" @bind:event="oninput" @onkeyup="SearchKey" />
+                <select @bind="query.Sort" @bind:after="LoadFromFiltersAsync">
+                    <option value="featured">پیشنهادی</option>
+                    <option value="newest">جدیدترین</option>
+                    <option value="price-asc">ارزان‌ترین</option>
+                    <option value="price-desc">گران‌ترین</option>
+                </select>
+                <button type="button" @onclick="LoadFromFiltersAsync">جست‌وجو</button>
+                <button type="button" class="mobile-filter-toggle" aria-controls="mobile-store-filters" aria-expanded="@mobileFiltersOpen" @onclick="ToggleMobileFilters">فیلترها <b>@ActiveFilterCount</b></button>
+            </div>
+
+            @if (loading)
+            {
+                <div class="ink-state">در حال دریافت محصولات...</div>
+            }
+            else if (result.Items.Count == 0)
+            {
+                <div class="ink-state"><div><h3>محصولی پیدا نشد</h3><p>فیلترها را حذف کن یا دسته‌بندی دیگری را انتخاب کن.</p><button type="button" @onclick="ResetFilters">نمایش همه محصولات</button></div></div>
+            }
+            else
+            {
+                <div class="ink-commerce-grid">
+                    @foreach (var product in result.Items)
+                    {
+                        <ProductCard Product="product" />
+                    }
+                </div>
+            }
+        </main>
+
+        <div class="mobile-filter-overlay @(mobileFiltersOpen ? "open" : null)" @onclick="CloseMobileFilters" aria-hidden="true"></div>
+
+<aside id="mobile-store-filters" class="ink-shop-filter @(mobileFiltersOpen ? "mobile-open" : null)" aria-label="فیلتر فروشگاه">
+            <div class="ink-filter-mobile-head"><h2>فیلتر فروشگاه</h2><button type="button" class="mobile-filter-close" aria-label="بستن فیلترها" @onclick="CloseMobileFilters">✕</button></div>
+            <div class="ink-filter-group">
+                <label>دسته‌بندی</label>
+                <select class="ink-filter-control" @bind="query.Category" @bind:after="LoadFromFiltersAsync">
+                    <option value="">همه دسته‌ها</option>
+                    @foreach (var category in categories.OrderBy(x => x.SortOrder))
+                    {
+                        <option value="@category.Slug">@category.Name</option>
+                    }
+                </select>
+            </div>
+
+            <div class="ink-filter-group">
+                <span class="ink-filter-title">وضعیت</span>
+                <label class="ink-filter-check"><span>فقط موجودها</span><input type="checkbox" @bind="query.InStockOnly" @bind:after="LoadFromFiltersAsync" /></label>
+                <label class="ink-filter-check"><span>فقط پیشنهادی‌ها</span><input type="checkbox" @bind="query.FeaturedOnly" @bind:after="LoadFromFiltersAsync" /></label>
+                <label class="ink-filter-check"><span>فقط تخفیف‌خورده‌ها</span><input type="checkbox" @bind="query.SaleOnly" @bind:after="LoadFromFiltersAsync" /></label>
+                <label class="ink-filter-check"><span>آماده گلدوزی‌شده</span><input type="checkbox" @bind="query.ReadyMadeOnly" @bind:after="LoadFromFiltersAsync" /></label>
+                <label class="ink-filter-check"><span>قابل شخصی‌سازی</span><input type="checkbox" @bind="query.CustomizableOnly" @bind:after="LoadFromFiltersAsync" /></label>
+            </div>
+
+            <div class="ink-filter-group">
+                <span class="ink-filter-title">محدوده قیمت</span>
+                <div class="ink-filter-row">
+                    <input class="ink-filter-control" placeholder="از" inputmode="numeric" maxlength="15" @bind="minPriceText" />
+                    <input class="ink-filter-control" placeholder="تا" inputmode="numeric" maxlength="15" @bind="maxPriceText" />
+                </div>
+                @if (!string.IsNullOrWhiteSpace(priceValidationError))
+                {
+                    <p class="form-error filter-validation-error">@priceValidationError</p>
+                }
+            </div>
+
+            <div class="ink-filter-group">
+                <span class="ink-filter-title">سایز</span>
+                <div class="ink-size-list">
+                    <button type="button" class="@(string.IsNullOrWhiteSpace(query.Size) ? "active" : null)" @onclick="async () => await SelectSize(null)">همه</button>
+                    @foreach (var size in filters.Sizes)
+                    {
+                        <button type="button" class="@(query.Size == size.Size ? "active" : null)" @onclick="async () => await SelectSize(size.Size)">@size.Size</button>
+                    }
+                </div>
+            </div>
+
+            <div class="ink-filter-group">
+                <span class="ink-filter-title">رنگ</span>
+                <div class="ink-color-list">
+                    <button type="button" title="همه رنگ‌ها" class="@(string.IsNullOrWhiteSpace(query.Color) ? "active" : null)" style="background:linear-gradient(135deg,#111 0 50%,#f2eadf 50%);" @onclick="async () => await SelectColor(null)"></button>
+                    @foreach (var color in filters.Colors)
+                    {
+                        <button type="button" title="@color.Name" class="@(query.Color == color.Hex ? "active" : null)" style="background:@color.Hex" @onclick="async () => await SelectColor(color.Hex)"></button>
+                    }
+                </div>
+            </div>
+
+            <div class="ink-filter-actions">
+                <button type="button" @onclick="ApplyPriceAsync">اعمال</button>
+                <button type="button" @onclick="ResetFilters">حذف فیلتر</button>
+            </div>
+        </aside>
+    </div>
+</section>
+
+@code {
+    private string ShopJsonLd => AiStructuredData.BuildShopGraph(
+        Navigation.BaseUri,
+        result.Items,
+        "TATAKAE | فروشگاه گلدوزی",
+        "فروشگاه لباس گلدوزی با تی‌شرت، هودی، دورس و پولوشرت آماده یا قابل شخصی‌سازی.");
+    private IReadOnlyCollection<CategoryDto> categories = Array.Empty<CategoryDto>();
+    private PagedResult<ProductCardDto> result = new(Array.Empty<ProductCardDto>(), 1, 12, 0);
+    private ProductFilterDto filters = new(Array.Empty<CategoryFilterDto>(), Array.Empty<SizeFilterDto>(), Array.Empty<ColorFilterDto>(), 0m, 0m, Array.Empty<string>());
+    private ProductListQuery query = new() { PageSize = 12, Sort = "featured", InStockOnly = true };
+    private bool loading = true;
+    private bool mobileFiltersOpen;
+    private string? minPriceText;
+    private string? maxPriceText;
+    private string? priceValidationError;
+
+    private int ActiveFilterCount => new[]
+    {
+        !string.IsNullOrWhiteSpace(query.Category),
+        query.FeaturedOnly,
+        query.SaleOnly,
+        query.ReadyMadeOnly,
+        query.CustomizableOnly,
+        query.MinPrice.HasValue,
+        query.MaxPrice.HasValue,
+        !string.IsNullOrWhiteSpace(query.Size),
+        !string.IsNullOrWhiteSpace(query.Color)
+    }.Count(x => x);
+
+    private void ToggleMobileFilters() => mobileFiltersOpen = !mobileFiltersOpen;
+    private void CloseMobileFilters() => mobileFiltersOpen = false;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+        => await JS.InvokeVoidAsync("tatakaeInk.init");
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        categories = (await Store.GetCategoriesAsync()).RequireUiData();
+        filters = (await Store.GetProductFiltersAsync(query)).RequireUiData();
+        result = (await Store.GetProductsAsync(query)).RequireUiData();
+        loading = false;
+    }
+
+    private async Task LoadFromFiltersAsync()
+    {
+        query.Page = 1;
+        await LoadAsync();
+    }
+
+    private async Task SearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await LoadFromFiltersAsync();
+    }
+
+    private async Task ClearCategory()
+    {
+        query.Category = null;
+        await LoadFromFiltersAsync();
+    }
+
+    private async Task SelectSize(string? size)
+    {
+        query.Size = size;
+        await LoadFromFiltersAsync();
+    }
+
+    private async Task SelectColor(string? hex)
+    {
+        query.Color = hex;
+        await LoadFromFiltersAsync();
+    }
+
+    private async Task ApplyPriceAsync()
+    {
+        priceValidationError = null;
+        decimal? min = null;
+        decimal? max = null;
+
+        if (!string.IsNullOrWhiteSpace(minPriceText))
+        {
+            if (!IranianInputNormalizer.TryParseNonNegativeDecimal(minPriceText, out var parsedMin))
+            {
+                priceValidationError = "حداقل قیمت باید یک عدد صفر یا مثبت باشد.";
+                return;
+            }
+            min = parsedMin;
+        }
+        if (!string.IsNullOrWhiteSpace(maxPriceText))
+        {
+            if (!IranianInputNormalizer.TryParseNonNegativeDecimal(maxPriceText, out var parsedMax))
+            {
+                priceValidationError = "حداکثر قیمت باید یک عدد صفر یا مثبت باشد.";
+                return;
+            }
+            max = parsedMax;
+        }
+        if (min.HasValue && max.HasValue && min.Value > max.Value)
+        {
+            priceValidationError = "حداقل قیمت نمی‌تواند از حداکثر قیمت بیشتر باشد.";
+            return;
+        }
+
+        query.MinPrice = min;
+        query.MaxPrice = max;
+        await LoadFromFiltersAsync();
+        CloseMobileFilters();
+    }
+
+    private async Task ResetFilters()
+    {
+        query = new ProductListQuery { PageSize = 12, Sort = "featured", InStockOnly = true };
+        minPriceText = null;
+        maxPriceText = null;
+        priceValidationError = null;
+        await LoadAsync();
+        CloseMobileFilters();
+    }
+}

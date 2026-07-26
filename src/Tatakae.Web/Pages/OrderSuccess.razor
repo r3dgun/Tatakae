@@ -1,0 +1,33 @@
+@page "/order-success/{Id:guid}"
+@inject IAccountApiClient AccountApi
+@inject IAuthSessionStore Auth
+
+<SeoHead Title="سفارش ثبت شد | Tatakae" Description="نتیجه ثبت سفارش و مسیر پیگیری خرید در Tatakae." Path="@($"/order-success/{Id}")" Index="false" Follow="false" />
+
+@if(order is null)
+{
+    <div class="loading-state page-top-space">در حال دریافت سفارش...</div>
+}
+else
+{
+    <section class="order-success page-shell">
+        <span>✓</span>
+        <h1>سفارش ثبت شد</h1>
+        <p>پرداخت سفارش با وضعیت <b>@(order.PaymentStatus == "Paid" ? "موفق" : "در انتظار")</b> ثبت شده و وضعیت فعلی سفارش: <b>@order.StatusLabel</b></p>
+        <OrderCard Order="order" Tracking="tracking" />
+        <div class="hero-actions"><a class="btn-primary" href="/account/orders">پیگیری سفارش</a><a class="btn-secondary" href="/shop">بازگشت به فروشگاه</a></div>
+    </section>
+}
+
+@code{
+    [Parameter] public Guid Id { get; set; }
+    private OrderDto? order;
+    private OrderTrackingDto? tracking;
+    protected override async Task OnParametersSetAsync()
+    {
+        await Auth.EnsureLoadedAsync();
+        var orders = (await AccountApi.OrdersAsync()).RequireUiData();
+        order = orders.FirstOrDefault(x => x.Id == Id);
+        tracking = (await AccountApi.OrderTrackingAsync(Id)).OptionalData();
+    }
+}

@@ -1,0 +1,131 @@
+@page "/admin/payments"
+@layout AdminLayout
+@attribute [Authorize(Policy = PermissionNames.AdminOrdersManage)]
+@using Tatakae.Application.Contracts.Payments
+@inject IAdminApiClient Admin
+@inject IJSRuntime JS
+
+<PageTitle>پرداخت‌ها | Tatakae</PageTitle>
+<section class="admin-page">
+    <div class="admin-head"><div><p class="admin-kicker">PAYMENTS</p><h1>پرداخت و تراکنش‌ها</h1><p>پرداخت‌های آنلاین، کارت‌به‌کارت، وضعیت تأیید و تاریخچه تراکنش‌ها را اینجا کنترل کن.</p></div></div>
+    @if (!string.IsNullOrWhiteSpace(operationMessage))
+    {
+        <div class="admin-placeholder">@operationMessage</div>
+    }
+    @if(loading)
+    {
+        <div class="admin-placeholder">در حال دریافت پرداخت‌ها...</div>
+    }
+    else if(data is null)
+    {
+        <div class="admin-placeholder">اطلاعات پرداخت دریافت نشد.</div>
+    }
+    else
+    {
+        <div class="admin-stat-grid payment-stat-grid">
+            <article><span>در انتظار</span><b>@data.Summary.PendingCount</b><small>@Currency.Format(data.Summary.PendingAmount)</small></article>
+            <article><span>تأیید شده</span><b>@data.Summary.VerifiedCount</b><small>@Currency.Format(data.Summary.VerifiedAmount)</small></article>
+            <article><span>ناموفق</span><b>@data.Summary.FailedCount</b><small>نیازمند بررسی</small></article>
+            <article><span>بازپرداخت تکمیل‌شده</span><b>@Currency.Format(data.Summary.RefundedAmount)</b><small>کامل و جزئی</small></article>
+        </div>
+
+        <div class="admin-table-card">
+            <table class="admin-table payments-table">
+                <thead><tr><th>سفارش</th><th>مشتری</th><th>روش</th><th>مبلغ</th><th>وضعیت</th><th>پیگیری</th><th>عملیات</th></tr></thead>
+                <tbody>
+                    @foreach(var payment in data.Payments)
+                    {
+                        <tr>
+                            <td><a href="@($"/admin/orders/{payment.OrderId}")">@payment.OrderNumber</a><small>@payment.CreatedAt.LocalDateTime.ToString("yyyy/MM/dd HH:mm")</small></td>
+                            <td>@payment.CustomerName<small>@payment.CustomerMobile</small></td>
+                            <td>@payment.MethodLabel<small>@payment.Gateway</small></td>
+                            <td>@Currency.Format(payment.Amount)</td>
+                            <td>
+                                <span class="payment-status-chip payment-status-chip--@payment.Status.ToLowerInvariant()">@payment.StatusLabel</span>
+                                @foreach (var refund in payment.Refunds.OrderByDescending(x => x.CreatedAt))
+                                {
+                                    <small>Refund @Currency.Format(refund.Amount): @refund.StatusLabel</small>
+                                }
+                            </td>
+                            <td><small>@(payment.ReferenceId ?? payment.TraceNumber ?? payment.GatewayAuthority ?? "—")</small></td>
+                            <td>
+                                @if(payment.Status is "Pending" or "RedirectedToGateway")
+                                {
+                                    @if(payment.Gateway == "Zarinpal" && payment.Method == "OnlineGateway")
+                                    {
+                                        <span class="admin-muted">تأیید فقط با Verify زرین‌پال</span>
+                                    }
+                                    else
+                                    {
+                                        <button class="admin-mini-btn" @onclick="() => Confirm(payment.Id)">تأیید پرداخت</button>
+                                        <button class="admin-mini-btn danger" @onclick="() => Fail(payment.Id)">ناموفق</button>
+                                    }
+                                }
+                                else if(payment.Gateway == "Zarinpal" && (payment.Status == "Verified" || payment.Status == "Succeeded"))
+                                {
+                                    <button class="admin-mini-btn danger" @onclick="() => Reverse(payment.Id)">Reverse کامل</button>
+                                    <button class="admin-mini-btn" @onclick="() => RefundPayment(payment)">Refund بانکی</button>
+                                }
+                                else
+                                {
+                                    <span class="admin-muted">ثبت شده</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+@code{
+    private AdminPaymentsDto? data;
+    private bool loading=true;
+    private string? operationMessage;
+    protected override async Task OnInitializedAsync(){data=(await Admin.AdminPaymentsAsync()).RequireUiData();loading=false;}
+    private async Task Confirm(Guid id){(await Admin.UpdatePaymentStatusAsync(id,new UpdatePaymentStatusRequest{Status="Verified",GatewayMessage="پرداخت توسط مدیر تأیید شد."})).RequireUiData();data=(await Admin.AdminPaymentsAsync()).RequireUiData();}
+    private async Task Fail(Guid id){(await Admin.UpdatePaymentStatusAsync(id,new UpdatePaymentStatusRequest{Status="Failed",GatewayMessage="پرداخت توسط مدیر ناموفق ثبت شد."})).RequireUiData();data=(await Admin.AdminPaymentsAsync()).RequireUiData();}
+    private async Task RefundPayment(PaymentDto payment)
+    {
+        var confirmed = await JS.InvokeAsync<bool>(
+            "confirm",
+            $"آیا Refund کامل مبلغ {Currency.Format(payment.Amount)} از طریق سرویس رسمی زرین‌پال ثبت شود؟");
+
+        if (!confirmed)
+            return;
+
+        var refund = await Admin.RefundZarinpalAsync(
+            payment.Id,
+            new CreateZarinpalRefundRequest
+            {
+                Amount = payment.Amount,
+                Description = $"Refund کامل سفارش {payment.OrderNumber}"
+            });
+
+        operationMessage = refund.Message;
+        refund.RequireUiData();
+        data = (await Admin.AdminPaymentsAsync()).RequireUiData();
+    }
+
+    private async Task Reverse(Guid id)
+    {
+        var confirmed = await JS.InvokeAsync<bool>(
+            "confirm",
+            "آیا از برگشت کامل این تراکنش در زرین‌پال مطمئن هستید؟ این عملیات مالی قابل بازگشت نیست.");
+
+        if (!confirmed)
+            return;
+
+        var reversed = await Admin.UpdatePaymentStatusAsync(
+            id,
+            new UpdatePaymentStatusRequest
+            {
+                Status = "Reversed",
+                GatewayMessage = "درخواست برگشت کامل تراکنش توسط مدیر ثبت شد."
+            });
+
+        operationMessage = reversed.Message;
+        reversed.RequireUiData();
+        data = (await Admin.AdminPaymentsAsync()).RequireUiData();
+    }
+}

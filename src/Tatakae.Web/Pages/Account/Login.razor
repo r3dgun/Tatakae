@@ -1,0 +1,69 @@
+@page "/login"
+@inject IAccountApiClient AccountApi
+@inject IAuthSessionStore Auth
+@inject ICartState Cart
+@inject ICartApiClient ServerCart
+@inject NavigationManager Navigation
+
+<SeoHead Title="ورود به حساب Tatakae" Description="ورود به حساب کاربری فروشگاه گلدوزی Tatakae برای مشاهده سفارش‌ها و ادامه خرید." Path="/login" Index="false" />
+<section class="auth-shell">
+    <div class="auth-card reveal">
+        <span class="eyebrow">customer login</span>
+        <h1 class="title" style="font-size:34px;margin:12px 0">ورود به حساب</h1>
+        <div class="seed-login-hint" aria-label="حساب‌های تست محیط توسعه">
+            <p class="lead" style="font-size:14px;margin-bottom:8px">حساب‌های آماده محیط Development:</p>
+            <p><b>مشتری:</b> 09121234567 / Customer&#64;123456</p>
+            <p><b>ادمین:</b> 09120000000 / Admin&#64;123456</p>
+        </div>
+        <EditForm Model="model" OnValidSubmit="LoginAsync" class="auth-form">
+            <RecursiveDataAnnotationsValidator />
+            <ValidationSummary />
+            <label class="field-label">موبایل<InputText class="input" @bind-Value="model.Mobile" inputmode="tel" autocomplete="tel" maxlength="13" placeholder="09121234567" /></label>
+            <ValidationMessage For="() => model.Mobile" />
+            <label class="field-label">رمز عبور<InputText class="input" type="password" @bind-Value="model.Password" autocomplete="current-password" maxlength="80" /></label>
+            <ValidationMessage For="() => model.Password" />
+            <label class="check-row auth-remember"><InputCheckbox @bind-Value="model.RememberMe" /> مرا در این مرورگر وارد نگه دار</label>
+            <button class="pill-btn" type="submit" disabled="@busy">@(busy ? "در حال ورود..." : "ورود")</button>
+            @if (!string.IsNullOrWhiteSpace(message)) { <p class="form-message">@message</p> }
+        </EditForm>
+        <div class="auth-switch"><span>حساب نداری؟</span><a class="ghost" href="@RegisterHref">ثبت‌نام</a></div>
+    </div>
+</section>
+
+@code {
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+
+    private LoginRequest model = new() { Mobile = "09121234567", Password = "Customer@123456", RememberMe = true };
+    private bool busy;
+    private string? message;
+    private string RegisterHref => string.IsNullOrWhiteSpace(ReturnUrl) ? "/register" : $"/register?returnUrl={Uri.EscapeDataString(ReturnUrl)}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.EnsureLoadedAsync();
+        await Cart.EnsureLoadedAsync(Auth.Current);
+    }
+
+    private async Task LoginAsync()
+    {
+        busy = true; message = null;
+        try
+        {
+            model.Mobile = IranianInputNormalizer.NormalizeIranianMobile(model.Mobile);
+            var session = (await AccountApi.LoginAsync(model)).RequireUiData();
+            await Cart.MergeGuestCartIntoAccountAsync(session);
+            await Auth.SignInAsync(session);
+            (await ServerCart.MergeAsync(Cart.Items)).EnsureUiSuccess();
+            Navigation.NavigateTo(ResolveReturnUrl(session));
+        }
+        catch (Exception ex) { message = ex.Message.Contains("Unauthorized") ? "شماره واردشده ثبت نشده است. ابتدا ثبت‌نام کن." : ex.Message; }
+        finally { busy = false; }
+    }
+
+    private string ResolveReturnUrl(AccountSessionDto session)
+    {
+        if (!string.IsNullOrWhiteSpace(ReturnUrl) && ReturnUrl.StartsWith('/')) return ReturnUrl;
+        return session.Permissions?.Contains(PermissionNames.AdminDashboardView) == true ? "/admin" : "/account";
+    }
+}

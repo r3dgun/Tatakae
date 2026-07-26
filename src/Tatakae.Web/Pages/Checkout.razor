@@ -1,0 +1,456 @@
+@page "/checkout"
+@using Tatakae.Application.Contracts.Shipping
+@using Tatakae.Application.Contracts.Coupons
+@using Tatakae.Application.Contracts.Lookups
+@inject ICartState Cart
+@inject IAuthSessionStore Auth
+@inject IAccountApiClient AccountApi
+@inject ICartApiClient ServerCart
+@inject ICheckoutApiClient CheckoutApi
+@inject IStoreApiClient StoreApi
+@inject NavigationManager Navigation
+
+<SeoHead Title="پرداخت و ثبت سفارش | Tatakae" Description="تکمیل خرید و ثبت سفارش گلدوزی در فروشگاه Tatakae." Path="/checkout" Index="false" />
+<section class="section" id="checkout">
+    <div class="wrap">
+        <div class="section-head reveal">
+            <div>
+                <span class="eyebrow">checkout</span>
+                <h1 class="title" style="margin-top:14px">پرداخت و ثبت سفارش</h1>
+                <p class="lead" style="margin-top:12px;max-width:760px">Checkout فقط برای کاربر واردشده فعال است؛ اگر قبل از ورود سبدت را پر کرده باشی، بعد از ورود همان سبد به حسابت متصل می‌شود.</p>
+            </div>
+            <a class="ghost" href="/shop">ادامه خرید</a>
+        </div>
+
+        @if (!loaded)
+        {
+            <div class="ink-state"><h2>در حال بررسی حساب...</h2><p>چند لحظه صبر کن.</p></div>
+        }
+        else if (Cart.Count == 0)
+        {
+            <div class="empty-state"><h2>سبد خرید خالی است</h2><p>برای ثبت سفارش، ابتدا یک لباس را در استودیوی گلدوزی شخصی‌سازی کن.</p><a class="pill-btn" href="/shop">مشاهده فروشگاه</a></div>
+        }
+        else if (!Auth.IsSignedIn)
+        {
+            <div class="ink-auth-required">
+                <div>
+                    <span class="eyebrow">login required</span>
+                    <h2>برای ادامه خرید باید وارد حساب شوی</h2>
+                    <p>سبد خریدت با @Cart.Count آیتم ذخیره شده است. بعد از ورود، همین محتویات به حساب کاربری‌ات متصل می‌شود و دوباره به همین صفحه برمی‌گردی.</p>
+                </div>
+                <div class="ink-auth-actions">
+                    <a class="pill-btn" href="/login?returnUrl=/checkout">ورود و ادامه پرداخت</a>
+                    <a class="ghost" href="/register?returnUrl=/checkout">ثبت‌نام سریع</a>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="checkout-account-strip">
+                <div>
+                    <span>ثبت سفارش برای</span>
+                    <b>@(Auth.Current?.FullName)</b>
+                    <small>@(Auth.Current?.Mobile) @(!string.IsNullOrWhiteSpace(Auth.Current?.Email) ? $"· {Auth.Current?.Email}" : string.Empty)</small>
+                </div>
+                <a class="ghost" href="/account">جزئیات حساب</a>
+            </div>
+
+            <div class="checkout-layout">
+                <div class="panel pad reveal">
+                    <EditForm Model="checkout" OnValidSubmit="Submit" class="checkout-form">
+                        <RecursiveDataAnnotationsValidator />
+                        <ValidationSummary />
+                        <div class="form-grid">
+                            <label>نام و نام خانوادگی<InputText @bind-Value="checkout.CustomerName" readonly /><ValidationMessage For="() => checkout.CustomerName" /></label>
+                            <label>شماره موبایل<InputText @bind-Value="checkout.Mobile" readonly /><ValidationMessage For="() => checkout.Mobile" /></label>
+                        </div>
+
+                        @if (addresses.Count > 0)
+                        {
+                            <div class="checkout-address-book">
+                                <div class="address-book-title">
+                                    <div>
+                                        <span class="eyebrow">saved address</span>
+                                        <h3>انتخاب آدرس ذخیره‌شده</h3>
+                                    </div>
+                                    <a class="text-link" href="/account/addresses">مدیریت آدرس‌ها</a>
+                                </div>
+                                <div class="checkout-address-options">
+                                    @foreach (var address in addresses)
+                                    {
+                                        <label class="checkout-address-option @(selectedAddressId == address.Id ? "active" : string.Empty)">
+                                            <input type="radio" name="savedAddress" checked="@(selectedAddressId == address.Id)" @onchange="() => SelectAddress(address)" />
+                                            <span>
+                                                <b>@address.RecipientName</b>
+                                                @if (address.IsDefault) { <small>پیش‌فرض</small> }
+                                                <small>@address.Province، @address.City، @address.AddressLine</small>
+                                                <small>@address.Mobile · @address.PostalCode</small>
+                                            </span>
+                                        </label>
+                                    }
+                                    <label class="checkout-address-option @(selectedAddressId is null ? "active" : string.Empty)">
+                                        <input type="radio" name="savedAddress" checked="@(selectedAddressId is null)" @onchange="UseManualAddress" />
+                                        <span><b>آدرس جدید</b><small>اطلاعات پایین را دستی وارد کن و در دفترچه آدرس ذخیره کن.</small></span>
+                                    </label>
+                                </div>
+                            </div>
+                        }
+
+                        <div class="form-grid">
+                            <label>نام گیرنده<InputText @bind-Value="checkout.ShippingAddress.RecipientName" autocomplete="name" maxlength="100" /><ValidationMessage For="() => checkout.ShippingAddress.RecipientName" /></label>
+                            <label>موبایل گیرنده<InputText @bind-Value="checkout.ShippingAddress.Mobile" inputmode="tel" autocomplete="tel" maxlength="13" /><ValidationMessage For="() => checkout.ShippingAddress.Mobile" /></label>
+                        </div>
+                        <div class="form-grid">
+                            <label>استان
+                                <select value="@checkout.ShippingAddress.Province" @onchange="OnCheckoutProvinceChanged">
+                                    @foreach (var province in locations)
+                                    {
+                                        <option value="@province.Name">@province.Name</option>
+                                    }
+                                </select>
+                                <ValidationMessage For="() => checkout.ShippingAddress.Province" />
+                            </label>
+                            <label>شهر
+                                <select value="@checkout.ShippingAddress.City" @onchange="OnCheckoutCityChanged">
+                                    @foreach (var city in CheckoutCities)
+                                    {
+                                        <option value="@city.Name">@city.Name</option>
+                                    }
+                                </select>
+                                <ValidationMessage For="() => checkout.ShippingAddress.City" />
+                            </label>
+                        </div>
+                        <div class="form-grid">
+                            <label>کد پستی<InputText @bind-Value="checkout.ShippingAddress.PostalCode" inputmode="numeric" autocomplete="postal-code" maxlength="10" /><ValidationMessage For="() => checkout.ShippingAddress.PostalCode" /></label>
+                            <label>پلاک / واحد<InputText @bind-Value="checkout.ShippingAddress.Plaque" maxlength="20" /><ValidationMessage For="() => checkout.ShippingAddress.Plaque" /></label>
+                        </div>
+                        <label>آدرس کامل<InputTextArea @bind-Value="checkout.ShippingAddress.AddressLine" rows="4" maxlength="400" /><ValidationMessage For="() => checkout.ShippingAddress.AddressLine" /></label>
+                        <label class="inline-check checkout-save-address"><InputCheckbox @bind-Value="saveAddressToBook" /> این آدرس در حساب ذخیره/به‌روزرسانی شود</label>
+
+                        <div class="shipping-methods">
+                            <h3>روش ارسال</h3>
+                            @if (shippingBusy)
+                            {
+                                <p class="lead">در حال دریافت روش‌های ارسال...</p>
+                            }
+                            else if (shippingMethods.Count == 0)
+                            {
+                                <p class="form-error">هیچ روش ارسال فعالی تعریف نشده است. از پنل مدیریت، روش ارسال بساز.</p>
+                            }
+                            else
+                            {
+                                @foreach (var method in shippingMethods)
+                                {
+                                    <label class="@ShippingOptionClass(method)">
+                                        <input type="radio" name="shipping" checked="@(checkout.ShippingMethodCode == method.Code)" @onchange="() => SelectShipping(method.Code)" />
+                                        <span><b>@method.Title</b><small>@method.Description</small><small>@DeliveryText(method)</small></span>
+                                        <strong>@(method.Price == 0 ? "رایگان" : Currency.Format(method.Price))</strong>
+                                    </label>
+                                }
+                            }
+                        </div>
+                        <ValidationMessage For="() => checkout.ShippingMethodCode" />
+
+                        <div class="payment-methods">
+                            <h3>روش پرداخت</h3>
+                            <label class="@OnlineGatewayPaymentClass">
+                                <input type="radio" name="payment" checked="@(selectedPaymentMethod == "OnlineGateway")" @onchange="SelectOnlineGateway" />
+                                <span><b>پرداخت آنلاین</b><small>انتقال امن به درگاه زرین‌پال و تأیید پرداخت در سمت سرور.</small></span>
+                            </label>
+                            <label class="@CardToCardPaymentClass">
+                                <input type="radio" name="payment" checked="@(selectedPaymentMethod == "CardToCard")" @onchange="SelectCardToCard" />
+                                <span><b>کارت به کارت</b><small>سفارش ثبت می‌شود و پرداخت باید توسط مدیر تأیید شود.</small></span>
+                            </label>
+                        </div>
+
+                        <div class="coupon">
+                            <InputText @bind-Value="checkout.CouponCode" dir="ltr" maxlength="30" placeholder="کد تخفیف: WELCOME10" />
+                            <button type="button" disabled="@(couponBusy || Cart.Subtotal <= 0)" @onclick="ApplyCoupon">@(couponBusy ? "در حال بررسی..." : "اعمال")</button>
+                        </div>
+                        <ValidationMessage For="() => checkout.CouponCode" />
+                        @if (!string.IsNullOrWhiteSpace(couponMessage)) { <p class="@(couponQuote?.IsValid == true ? "form-message" : "form-error")">@couponMessage</p> }
+                        @if (!string.IsNullOrWhiteSpace(error)) { <p class="form-error">@error</p> }
+                        <button class="pill-btn" style="width:100%;margin-top:6px" disabled="@(busy || shippingMethods.Count == 0)" type="submit">@(busy ? "در حال ثبت..." : "ثبت سفارش و ادامه پرداخت")</button>
+                    </EditForm>
+                </div>
+                <aside class="panel checkout-summary reveal">
+                    <h3>خلاصه سفارش</h3>
+                    <div style="display:grid;gap:10px;margin:16px 0">
+                        @foreach (var item in Cart.Items)
+                        {
+                            <div class="checkout-line">
+                                <img src="@item.ProductImageUrl" alt="@item.ProductName" />
+                                <div>
+                                    <b>@item.ProductName</b>
+                                    <small>@item.ColorName · @item.Size · تعداد @item.Quantity</small>
+                                    @if (item.IsReadyMade)
+                                    {
+                                        <small>محصول آماده گلدوزی‌شده · بدون ورود به استودیو</small>
+                                    }
+                                    else
+                                    {
+                                        <small>گلدوزی @PlacementLabel(item.Embroidery.Placement) · @DesignLabel(item.Embroidery)</small>
+                                        <small>@item.Embroidery.ScalePercent% · @item.Embroidery.RotationDegrees° · X:@item.Embroidery.PositionX Y:@item.Embroidery.PositionY</small>
+                                    }
+                                </div>
+                                <strong>@Currency.Format(item.LineTotal)</strong>
+                            </div>
+                        }
+                    </div>
+                    <div class="summary-row"><span>جمع کالاها</span><b>@Currency.Format(Cart.Subtotal)</b></div>
+                    <div class="summary-row"><span>روش ارسال</span><b>@(SelectedShipping?.Title ?? "انتخاب نشده")</b></div>
+                    <div class="summary-row"><span>ارسال</span><b>@(Shipping == 0 ? "رایگان" : Currency.Format(Shipping))</b></div>
+                    <div class="summary-row"><span>تخفیف</span><b>@(Discount == 0 ? "۰ تومان" : $"- {Currency.Format(Discount)}")</b></div>
+                    <div class="summary-row total"><span>قابل پرداخت</span><b>@Currency.Format(PayableTotal)</b></div>
+                    <p class="lead" style="font-size:12px;margin-top:14px">سفارش با حساب کاربری @(Auth.Current?.FullName) ثبت می‌شود و در صفحه سفارش‌های همین حساب نمایش داده خواهد شد.</p>
+                </aside>
+            </div>
+        }
+    </div>
+</section>
+
+@code {
+    private CheckoutRequest checkout = new() { ShippingAddress = new CheckoutAddressRequest { Province = "تهران", City = "تهران" } };
+    private IReadOnlyCollection<ShippingMethodDto> shippingMethods = Array.Empty<ShippingMethodDto>();
+    private IReadOnlyCollection<ProvinceLocationDto> locations = Array.Empty<ProvinceLocationDto>();
+    private IReadOnlyCollection<CityLocationDto> CheckoutCities => locations.FirstOrDefault(x => x.Name == checkout.ShippingAddress.Province)?.Cities ?? Array.Empty<CityLocationDto>();
+    private List<CustomerAddressDto> addresses = [];
+    private Guid? selectedAddressId;
+    private bool saveAddressToBook = true;
+    private bool loaded;
+    private bool busy;
+    private bool shippingBusy;
+    private bool couponBusy;
+    private string? error;
+    private string? couponMessage;
+    private CouponQuoteDto? couponQuote;
+    private string selectedPaymentMethod = "OnlineGateway";
+    private ShippingMethodDto? SelectedShipping => shippingMethods.FirstOrDefault(x => x.Code == checkout.ShippingMethodCode);
+    private decimal Shipping => SelectedShipping?.Price ?? 0m;
+    private decimal Discount => couponQuote?.IsValid == true && string.Equals(couponQuote.Code, checkout.CouponCode?.Trim(), StringComparison.OrdinalIgnoreCase) ? couponQuote.DiscountAmount : 0m;
+    private decimal PayableTotal => Math.Max(0m, Cart.Subtotal + Shipping - Discount);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.EnsureLoadedAsync();
+        await Cart.EnsureLoadedAsync(Auth.Current);
+
+        if (Auth.IsSignedIn)
+        {
+            var freshSession = (await AccountApi.MeAsync()).OptionalData();
+            if (freshSession is not null)
+            {
+                await Auth.SignInAsync(freshSession);
+                await Cart.MergeGuestCartIntoAccountAsync(freshSession);
+            }
+
+            PrefillFromAccount();
+            locations = (await StoreApi.GetLocationsAsync()).RequireUiData();
+            EnsureCheckoutLocationDefaults();
+            addresses = ((await AccountApi.AddressesAsync()).RequireUiData()).OrderByDescending(x => x.IsDefault).ToList();
+            var defaultAddress = addresses.FirstOrDefault(x => x.IsDefault) ?? addresses.FirstOrDefault();
+            if (defaultAddress is not null)
+            {
+                ApplyAddress(defaultAddress);
+            }
+            checkout.Items = Cart.Items.Select(ToCheckoutItem).ToList();
+            await ReloadShipping();
+        }
+
+        loaded = true;
+    }
+
+    private void PrefillFromAccount()
+    {
+        var session = Auth.Current;
+        if (session is null) return;
+        checkout.CustomerName = session.FullName;
+        checkout.Mobile = session.Mobile;
+        checkout.Email = session.Email;
+        if (string.IsNullOrWhiteSpace(checkout.ShippingAddress.RecipientName)) checkout.ShippingAddress.RecipientName = session.FullName;
+        if (string.IsNullOrWhiteSpace(checkout.ShippingAddress.Mobile)) checkout.ShippingAddress.Mobile = session.Mobile;
+    }
+
+    private async Task OnCheckoutProvinceChanged(ChangeEventArgs args)
+    {
+        checkout.ShippingAddress.Province = args.Value?.ToString() ?? "تهران";
+        checkout.ShippingAddress.City = CheckoutCities.FirstOrDefault()?.Name ?? string.Empty;
+        selectedAddressId = null;
+        await ReloadShipping();
+    }
+
+    private async Task OnCheckoutCityChanged(ChangeEventArgs args)
+    {
+        checkout.ShippingAddress.City = args.Value?.ToString() ?? string.Empty;
+        selectedAddressId = null;
+        await ReloadShipping();
+    }
+
+    private void EnsureCheckoutLocationDefaults()
+    {
+        if (locations.Count == 0) return;
+        if (!locations.Any(x => x.Name == checkout.ShippingAddress.Province))
+        {
+            checkout.ShippingAddress.Province = locations.First().Name;
+        }
+
+        var cities = CheckoutCities;
+        if (cities.Count > 0 && !cities.Any(x => x.Name == checkout.ShippingAddress.City))
+        {
+            checkout.ShippingAddress.City = cities.First().Name;
+        }
+    }
+
+    private async Task ReloadShipping()
+    {
+        if (Cart.Count == 0) return;
+        shippingBusy = true;
+        try
+        {
+            shippingMethods = (await CheckoutApi.ShippingMethodsAsync(new ShippingQuoteRequest
+            {
+                Province = string.IsNullOrWhiteSpace(checkout.ShippingAddress.Province) ? "تهران" : checkout.ShippingAddress.Province,
+                City = string.IsNullOrWhiteSpace(checkout.ShippingAddress.City) ? "تهران" : checkout.ShippingAddress.City,
+                ItemCount = Cart.Count,
+                CartSubtotal = Cart.Subtotal
+            })).RequireUiData();
+            if (!shippingMethods.Any(x => x.Code == checkout.ShippingMethodCode))
+            {
+                checkout.ShippingMethodCode = shippingMethods.OrderByDescending(x => x.IsDefault).ThenBy(x => x.Price).FirstOrDefault()?.Code ?? string.Empty;
+            }
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { shippingBusy = false; }
+    }
+
+
+    private async Task ApplyCoupon()
+    {
+        couponBusy = true;
+        couponMessage = null;
+        couponQuote = null;
+        try
+        {
+            var quote = (await CheckoutApi.QuoteCouponAsync(new CouponQuoteRequest
+            {
+                Code = checkout.CouponCode ?? string.Empty,
+                CartSubtotal = Cart.Subtotal
+            })).RequireUiData();
+
+            couponQuote = quote;
+            couponMessage = quote.Message;
+            if (quote.IsValid) checkout.CouponCode = quote.Code;
+        }
+        catch (Exception ex)
+        {
+            couponMessage = ex.Message;
+        }
+        finally
+        {
+            couponBusy = false;
+        }
+    }
+
+    private async Task Submit()
+    {
+        if (!Auth.IsSignedIn)
+        {
+            Navigation.NavigateTo("/login?returnUrl=/checkout");
+            return;
+        }
+
+        busy = true;
+        error = null;
+        try
+        {
+            PrefillFromAccount();
+            checkout.CustomerName = checkout.CustomerName.Trim();
+            checkout.Mobile = IranianInputNormalizer.NormalizeIranianMobile(checkout.Mobile);
+            checkout.Email = string.IsNullOrWhiteSpace(checkout.Email) ? null : checkout.Email.Trim();
+            checkout.Items = Cart.Items.Select(ToCheckoutItem).ToList();
+            if (string.IsNullOrWhiteSpace(checkout.ShippingAddress.RecipientName)) checkout.ShippingAddress.RecipientName = checkout.CustomerName;
+            if (string.IsNullOrWhiteSpace(checkout.ShippingAddress.Mobile)) checkout.ShippingAddress.Mobile = checkout.Mobile;
+            checkout.ShippingAddress.RecipientName = checkout.ShippingAddress.RecipientName.Trim();
+            checkout.ShippingAddress.Mobile = IranianInputNormalizer.NormalizeIranianMobile(checkout.ShippingAddress.Mobile);
+            checkout.ShippingAddress.PostalCode = IranianInputNormalizer.NormalizeDigits(checkout.ShippingAddress.PostalCode);
+            checkout.ShippingAddress.AddressLine = checkout.ShippingAddress.AddressLine.Trim();
+            checkout.ShippingAddress.Plaque = string.IsNullOrWhiteSpace(checkout.ShippingAddress.Plaque) ? null : IranianInputNormalizer.NormalizeDigits(checkout.ShippingAddress.Plaque);
+            checkout.ShippingAddress.Unit = string.IsNullOrWhiteSpace(checkout.ShippingAddress.Unit) ? null : IranianInputNormalizer.NormalizeDigits(checkout.ShippingAddress.Unit);
+            checkout.CouponCode = string.IsNullOrWhiteSpace(checkout.CouponCode) ? null : checkout.CouponCode.Trim().ToUpperInvariant();
+            var order = (await CheckoutApi.CheckoutAsync(checkout)).RequireUiData();
+            if (saveAddressToBook)
+            {
+                try { (await AccountApi.SaveAddressAsync(selectedAddressId, ToAddressRequest())).RequireUiData(); }
+                catch { /* ثبت سفارش نباید به‌خاطر ذخیره نشدن آدرس متوقف شود. */ }
+            }
+            Navigation.NavigateTo($"/payment/{order.Id}?method={selectedPaymentMethod}");
+        }
+        catch (UnauthorizedAccessException) { Navigation.NavigateTo("/login?returnUrl=/checkout"); }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task SelectAddress(CustomerAddressDto address)
+    {
+        ApplyAddress(address);
+        await ReloadShipping();
+    }
+
+    private void ApplyAddress(CustomerAddressDto address)
+    {
+        selectedAddressId = address.Id;
+        checkout.ShippingAddress = new CheckoutAddressRequest
+        {
+            RecipientName = address.RecipientName,
+            Mobile = address.Mobile,
+            Province = address.Province,
+            City = address.City,
+            PostalCode = address.PostalCode,
+            AddressLine = address.AddressLine,
+            Plaque = address.Plaque,
+            Unit = address.Unit
+        };
+        EnsureCheckoutLocationDefaults();
+    }
+
+    private void UseManualAddress()
+    {
+        selectedAddressId = null;
+        if (string.IsNullOrWhiteSpace(checkout.ShippingAddress.RecipientName)) checkout.ShippingAddress.RecipientName = Auth.Current?.FullName ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(checkout.ShippingAddress.Mobile)) checkout.ShippingAddress.Mobile = Auth.Current?.Mobile ?? string.Empty;
+    }
+
+    private CustomerAddressRequest ToAddressRequest() => new()
+    {
+        RecipientName = checkout.ShippingAddress.RecipientName,
+        Mobile = checkout.ShippingAddress.Mobile,
+        Province = checkout.ShippingAddress.Province,
+        City = checkout.ShippingAddress.City,
+        PostalCode = checkout.ShippingAddress.PostalCode,
+        AddressLine = checkout.ShippingAddress.AddressLine,
+        Plaque = checkout.ShippingAddress.Plaque,
+        Unit = checkout.ShippingAddress.Unit,
+        IsDefault = selectedAddressId.HasValue ? addresses.FirstOrDefault(x => x.Id == selectedAddressId.Value)?.IsDefault == true : addresses.Count == 0
+    };
+
+    private static CheckoutItemRequest ToCheckoutItem(CartLine item) => new()
+    {
+        ProductId = item.ProductId,
+        VariantId = item.VariantId,
+        Quantity = item.Quantity,
+        Embroidery = item.Embroidery
+    };
+    private static string PlacementLabel(string placement) => placement switch { "LeftChest" => "سینه چپ", "CenterChest" => "وسط سینه", "RightChest" => "سینه راست", "BackNeck" => "پشت یقه", "LeftSleeve" => "آستین چپ", "RightSleeve" => "آستین راست", _ => placement };
+    private static string DesignLabel(EmbroideryCustomizationRequest embroidery)
+    {
+        if (string.Equals(embroidery.Note, "READY_MADE_PRODUCT", StringComparison.OrdinalIgnoreCase)) return "محصول آماده گلدوزی‌شده";
+        return embroidery.DesignSource switch { "Upload" => $"فایل: {embroidery.ArtworkFileName}", "Text" => $"متن: {embroidery.Text}", _ => embroidery.MotifKey == "sword" ? "طرح آماده: شمشیر" : embroidery.MotifKey == "cloud" ? "طرح آماده: ابر" : "طرح آماده: اژدها" };
+    }
+    private void SelectShipping(string code) => checkout.ShippingMethodCode = code;
+    private void SelectOnlineGateway() => selectedPaymentMethod = "OnlineGateway";
+    private void SelectCardToCard() => selectedPaymentMethod = "CardToCard";
+    private string ShippingOptionClass(ShippingMethodDto method) => checkout.ShippingMethodCode == method.Code ? "shipping-option active" : "shipping-option";
+    private string OnlineGatewayPaymentClass => selectedPaymentMethod == "OnlineGateway" ? "payment-option active" : "payment-option";
+    private string CardToCardPaymentClass => selectedPaymentMethod == "CardToCard" ? "payment-option active" : "payment-option";
+    private static string DeliveryText(ShippingMethodDto method) => method.EstimatedMaxDays == 0 ? "تحویل حضوری / بدون ارسال" : $"تحویل حدودی {method.EstimatedMinDays} تا {method.EstimatedMaxDays} روز کاری";
+}

@@ -1,0 +1,212 @@
+@page "/"
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<SeoHead Title="TATAKAE | Ink Editorial Embroidery Store" Description="فروشگاه لباس گلدوزی با پوسته Ink Editorial Anime Store؛ انتخاب محصول، استودیو گلدوزی و ثبت سفارش آنلاین." Path="/" JsonLd="@SiteJsonLd" />
+
+<section class="opening-campaign" data-accent="vermilion" aria-labelledby="campaign-title">
+    <div class="campaign-grid" aria-hidden="true"></div>
+    <div class="campaign-ghost" aria-hidden="true">COUTURE</div>
+
+    <figure class="campaign-shot campaign-shot--left campaign-depth" data-depth="0.32">
+        <img src="https://i.pinimg.com/736x/62/53/e3/6253e3aca16a432bbec7b273a970cea5.jpg" onerror="this.onerror=null;this.src='/ink/assets/fallback-red.svg'" alt="Anime editorial streetwear look in red and black" />
+        <figcaption>LOOK 01 / VERMILION</figcaption>
+    </figure>
+
+    <figure class="campaign-shot campaign-shot--right campaign-depth" data-depth="0.18">
+        <img src="https://i.pinimg.com/736x/31/4e/62/314e626f5effb864c7303ef2b93b351e.jpg" onerror="this.onerror=null;this.src='/ink/assets/fallback-white.svg'" alt="Anime editorial techwear look in white" />
+        <figcaption>LOOK 02 / PAPER UNIT</figcaption>
+    </figure>
+
+    <div class="campaign-sun campaign-depth" data-depth="0.09" aria-hidden="true"><span>新作</span></div>
+    <span class="campaign-note campaign-note--a campaign-depth" data-depth="0.42">SELECTED ITEMS / 2026</span>
+    <span class="campaign-note campaign-note--b campaign-depth" data-depth="0.24">ORIGINAL EMBROIDERY STREETWEAR</span>
+
+    <div class="campaign-copy campaign-depth" data-depth="0.12">
+        <p class="eyebrow">TATAKAE COUTURE / NEW CAMPAIGN</p>
+        <h1 id="campaign-title"><span>ENTER</span><span>THE</span><span>FRAME.</span></h1>
+        <p class="campaign-lead">کالکشن منتخب با ساختار پارالاکس چندلایه، تایپوگرافی ادیتوریال و ترکیب مانگا با استریت‌ور گلدوزی.</p>
+        <div class="campaign-actions">
+            <a href="/shop" class="campaign-btn campaign-btn--solid">SHOP SELECTED <b>↙</b></a>
+            <a href="#drops" class="campaign-btn">VIEW DROPS <b>↙</b></a>
+        </div>
+    </div>
+
+    <div class="campaign-scroll" aria-hidden="true"><span></span>SCROLL TO DISCOVER</div>
+    <div class="campaign-counter">001 / 005</div>
+</section>
+
+<section id="featured" class="featured-edit" data-accent="paper" aria-labelledby="featured-title">
+    <header class="featured-header">
+        <div><p class="eyebrow">CURATED SHOP / 04 ITEMS</p><h2 id="featured-title">SELECTED<br><i>ITEMS.</i></h2></div>
+        <p>چهار محصول شاخص برای ورودی فروشگاه؛ تصاویر بزرگ، اطلاعات مختصر و رفتن سریع به جزئیات محصول.</p>
+        <a href="/shop" class="featured-all">VIEW ALL PRODUCTS <span>↙</span></a>
+    </header>
+
+    <div class="featured-grid">
+        <article class="featured-card" data-theme="vermilion">
+            <a href="/product/premium-cotton-embroidered-tshirt" class="featured-media">
+                <img src="https://i.pinimg.com/736x/62/53/e3/6253e3aca16a432bbec7b273a970cea5.jpg" onerror="this.onerror=null;this.src='/ink/assets/fallback-red.svg'" alt="Vermilion embroidered tee" />
+                <span class="featured-index">01</span><span class="featured-quick">QUICK VIEW ↙</span>
+            </a>
+            <div class="featured-meta"><div><span>TEE / EMBROIDERY</span><h3>PREMIUM COTTON TEE</h3></div><b>825K</b></div>
+        </article>
+
+        <article class="featured-card featured-card--lower" data-theme="void">
+            <a href="/product/essential-fleece-embroidered-hoodie" class="featured-media">
+                <img src="https://i.pinimg.com/736x/8d/83/fc/8d83fcd41cd102d02ebe678de4e8838c.jpg" onerror="this.onerror=null;this.src='/ink/assets/fallback-black.svg'" alt="Black hoodie editorial" />
+                <span class="featured-index">02</span><span class="featured-quick">QUICK VIEW ↙</span>
+            </a>
+            <div class="featured-meta"><div><span>HOODIE / CUSTOM</span><h3>ESSENTIAL FLEECE</h3></div><b>1.65M</b></div>
+        </article>
+
+        <article class="featured-card" data-theme="paper">
+            <a href="/product/corporate-pique-embroidered-polo" class="featured-media">
+                <img src="https://i.pinimg.com/736x/31/4e/62/314e626f5effb864c7303ef2b93b351e.jpg" onerror="this.onerror=null;this.src='/ink/assets/fallback-white.svg'" alt="White polo editorial" />
+                <span class="featured-index">03</span><span class="featured-quick">QUICK VIEW ↙</span>
+            </a>
+            <div class="featured-meta"><div><span>POLO / CORPORATE</span><h3>CORPORATE PIQUÉ</h3></div><b>1.25M</b></div>
+        </article>
+
+        <article class="featured-card featured-card--lower" data-theme="signal">
+            <a href="/product/heavyweight-oversize-embroidered-tshirt" class="featured-media">
+                <img src="https://i.pinimg.com/736x/04/0b/0d/040b0d190fcd1a10d9691e35ef75235c.jpg" onerror="this.onerror=null;this.src='/ink/assets/fallback-neon.svg'" alt="Neon oversized tee" />
+                <span class="featured-index">04</span><span class="featured-quick">QUICK VIEW ↙</span>
+            </a>
+            <div class="featured-meta"><div><span>OVERSIZE / NIGHT SIGNAL</span><h3>HEAVYWEIGHT OVERSIZE</h3></div><b>1.09M</b></div>
+        </article>
+    </div>
+</section>
+
+<section id="discounted" class="featured-edit discounted-edit" data-accent="signal" aria-labelledby="discounted-title">
+    <header class="featured-header discounted-header">
+        <div>
+            <p class="eyebrow">SALE DROP / 04 ITEMS</p>
+            <h2 id="discounted-title">DISCOUNTED<br><i>ITEMS.</i></h2>
+        </div>
+        <p>چهار محصول تخفیف‌خورده برای ورودی صفحه اصلی؛ قیمت قبل و بعد از تخفیف واضح نمایش داده می‌شود و هر کارت مستقیم به جزئیات همان محصول می‌رود.</p>
+        <a href="/shop" class="featured-all">VIEW SALE PRODUCTS <span>↙</span></a>
+    </header>
+
+    <div class="featured-grid discounted-grid">
+        <article class="featured-card discounted-card" data-theme="vermilion">
+            <a href="/product/premium-cotton-embroidered-tshirt" class="featured-media">
+                <img src="https://i.pinimg.com/736x/62/53/e3/6253e3aca16a432bbec7b273a970cea5.jpg" onerror="this.onerror=null;this.src='/ink/assets/fallback-red.svg'" alt="Premium cotton embroidered t-shirt sale" />
+                <span class="featured-index">01</span>
+                <span class="featured-quick">SALE VIEW ↙</span>
+                <b class="discount-badge">-7%</b>
+            </a>
+            <div class="featured-meta discounted-meta">
+                <div><span>TEE / LIMITED SALE</span><h3>PREMIUM COTTON TEE</h3></div>
+                <b class="discount-price"><del>890K</del><strong>825K</strong></b>
+            </div>
+        </article>
+
+        <article class="featured-card featured-card--lower discounted-card" data-theme="void">
+            <a href="/product/essential-fleece-embroidered-hoodie" class="featured-media">
+                <img src="https://i.pinimg.com/736x/8d/83/fc/8d83fcd41cd102d02ebe678de4e8838c.jpg" onerror="this.onerror=null;this.src='/ink/assets/fallback-black.svg'" alt="Essential fleece hoodie discount" />
+                <span class="featured-index">02</span>
+                <span class="featured-quick">SALE VIEW ↙</span>
+                <b class="discount-badge">-8%</b>
+            </a>
+            <div class="featured-meta discounted-meta">
+                <div><span>HOODIE / WINTER SALE</span><h3>ESSENTIAL FLEECE</h3></div>
+                <b class="discount-price"><del>1.79M</del><strong>1.65M</strong></b>
+            </div>
+        </article>
+
+        <article class="featured-card discounted-card" data-theme="signal">
+            <a href="/product/heavyweight-oversize-embroidered-tshirt" class="featured-media">
+                <img src="https://i.pinimg.com/736x/04/0b/0d/040b0d190fcd1a10d9691e35ef75235c.jpg" onerror="this.onerror=null;this.src='/ink/assets/fallback-neon.svg'" alt="Heavyweight oversized t-shirt sale" />
+                <span class="featured-index">03</span>
+                <span class="featured-quick">SALE VIEW ↙</span>
+                <b class="discount-badge">-9%</b>
+            </a>
+            <div class="featured-meta discounted-meta">
+                <div><span>OVERSIZE / NIGHT SIGNAL</span><h3>HEAVYWEIGHT OVERSIZE</h3></div>
+                <b class="discount-price"><del>1.09M</del><strong>995K</strong></b>
+            </div>
+        </article>
+
+        <article class="featured-card featured-card--lower discounted-card" data-theme="paper">
+            <a href="/product/ready-dragon-mark-embroidered-tshirt" class="featured-media">
+                <img src="https://i.pinimg.com/736x/45/1c/7c/451c7c523ad2d98a1346f4106e831477.jpg" onerror="this.onerror=null;this.src='/ink/assets/fallback-red2.svg'" alt="Ready made dragon mark embroidered tee sale" />
+                <span class="featured-index">04</span>
+                <span class="featured-quick">READY SALE ↙</span>
+                <b class="discount-badge">-8%</b>
+            </a>
+            <div class="featured-meta discounted-meta">
+                <div><span>READY MADE / NO STUDIO</span><h3>DRAGON MARK TEE</h3></div>
+                <b class="discount-price"><del>1.18M</del><strong>1.08M</strong></b>
+            </div>
+        </article>
+    </div>
+</section>
+
+<section class="hero panel" data-accent="vermilion">
+    <div class="hero-copy parallax" data-speed="0.08">
+        <p class="eyebrow">EMBROIDERY STREETWEAR / SS-26</p>
+        <h1><span>WEAR</span><span>THE</span><span>PANEL.</span></h1>
+        <div class="hero-bottom"><a class="round-link" href="/shop">ENTER DROP <i>↙</i></a><p>یک ادیتوریال انیمه‌ای؛ ساده، سنگین و کاملاً متفاوت، اما آماده برای فروشگاه ایرانی.</p></div>
+    </div>
+
+    <article class="image-portal hero-portal" data-theme="vermilion" data-label="VERMILION MODE">
+        <img class="base" src="https://i.pinimg.com/736x/62/53/e3/6253e3aca16a432bbec7b273a970cea5.jpg" onerror="this.onerror=null;this.src='/ink/assets/fallback-red.svg'" alt="Anime streetwear character in red and black" />
+        <img class="reveal" src="https://i.pinimg.com/736x/04/0b/0d/040b0d190fcd1a10d9691e35ef75235c.jpg" onerror="this.onerror=null;this.src='/ink/assets/fallback-neon.svg'" alt="Cyberpunk streetwear alternate visual" />
+        <div class="portal-meta"><span>01 / HERO</span><b>MOVE OVER IMAGE</b></div>
+        <span class="jp">戦え・刺繍</span>
+    </article>
+    <div class="hero-index">001<br/>TOKYO<br/>INK</div>
+</section>
+
+<div class="ticker" aria-hidden="true"><div>LIMITED DROP — ORIGINAL EMBROIDERY SYSTEM — LIMITED DROP — ORIGINAL EMBROIDERY SYSTEM —&nbsp;</div></div>
+
+<section id="drops" class="drop panel drop--void" data-accent="void">
+    <div class="drop-number">02</div>
+    <div class="drop-copy parallax" data-speed="0.06">
+        <p class="eyebrow">DROP / BLACK SYSTEM</p>
+        <h2>VOID<br><i>UNIT</i></h2>
+        <p>مشکی جوهری، سبز اسیدی و چیدمان مجله‌ای. این بخش برای معرفی کالکشن هودی و لباس‌های تیره مناسب است.</p>
+        <a href="/category/embroidered-hoodies" class="text-link">VIEW THE CAPSULE <span>↙</span></a>
+    </div>
+    <article class="image-portal tall" data-theme="void" data-label="VOID MODE">
+        <img class="base" src="https://i.pinimg.com/736x/8d/83/fc/8d83fcd41cd102d02ebe678de4e8838c.jpg" onerror="this.onerror=null;this.src='/ink/assets/fallback-black.svg'" alt="Dark anime techwear character" />
+        <img class="reveal" src="https://i.pinimg.com/736x/31/4e/62/314e626f5effb864c7303ef2b93b351e.jpg" onerror="this.onerror=null;this.src='/ink/assets/fallback-white.svg'" alt="White techwear alternate character" />
+        <div class="portal-meta"><span>LOOK 02</span><b>INK → ACID</b></div>
+    </article>
+    <div class="kanji">虚<br/>無</div>
+</section>
+
+<section class="drop panel drop--signal" data-accent="signal">
+    <article class="image-portal wide" data-theme="signal" data-label="SIGNAL MODE">
+        <img class="base" src="https://i.pinimg.com/736x/04/0b/0d/040b0d190fcd1a10d9691e35ef75235c.jpg" onerror="this.onerror=null;this.src='/ink/assets/fallback-neon.svg'" alt="Neon anime oversized streetwear look" />
+        <img class="reveal" src="https://i.pinimg.com/736x/62/53/e3/6253e3aca16a432bbec7b273a970cea5.jpg" onerror="this.onerror=null;this.src='/ink/assets/fallback-red.svg'" alt="Red alternate streetwear visual" />
+        <div class="portal-meta"><span>LOOK 03</span><b>SIGNAL → RED</b></div>
+    </article>
+    <div class="drop-copy parallax" data-speed="0.05">
+        <p class="eyebrow">DROP / NIGHT TRANSMISSION</p>
+        <h2>NIGHT<br><i>SIGNAL</i></h2>
+        <p>برای تی‌شرت‌های اورسایز، طرح‌های لوگویی و کالکشن‌های محدود.</p>
+        <a href="/category/embroidered-tshirts" class="text-link">TRANSMIT THE DROP <span>↙</span></a>
+    </div>
+    <div class="signal-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+</section>
+
+<section id="lookbook" class="lookbook panel">
+    <div class="lookbook-word parallax" data-speed="0.04">LOOKBOOK</div>
+    <article class="look-main image-portal" data-theme="vermilion" data-label="OPEN PANEL">
+        <img class="base" src="https://i.pinimg.com/736x/45/1c/7c/451c7c523ad2d98a1346f4106e831477.jpg" onerror="this.onerror=null;this.src='/ink/assets/fallback-red2.svg'" alt="Anime red streetwear look" />
+        <img class="reveal" src="https://i.pinimg.com/736x/31/4e/62/314e626f5effb864c7303ef2b93b351e.jpg" onerror="this.onerror=null;this.src='/ink/assets/fallback-white.svg'" alt="Anime white techwear look" />
+    </article>
+    <div class="look-copy"><span>EDITORIAL 005</span><h2>NO HEROES.<br/>ONLY FITS.</h2><p>این بخش برای عکس‌های کمپین، مدل‌ها و ویدیوهای کوتاه مناسب است. نسبت تصویر بلند نگه داشته شده تا روی موبایل هم جذاب بماند.</p></div>
+</section>
+
+@code {
+    private string SiteJsonLd => AiStructuredData.BuildSiteGraph(
+        Navigation.BaseUri,
+        "Tatakae",
+        "فروشگاه ایرانی پوشاک گلدوزی آماده و قابل شخصی‌سازی؛ شامل تی‌شرت، هودی، دورس و پولوشرت با سفارش آنلاین.");
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+        => await JS.InvokeVoidAsync("tatakaeInk.init");
+}

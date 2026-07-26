@@ -1,0 +1,213 @@
+@page "/admin/legal"
+@layout AdminLayout
+@attribute [Authorize(Policy = PermissionNames.AdminLegalView)]
+@inject IAdminApiClient Admin
+
+<PageTitle>قوانین و ارتباط | Tatakae Admin</PageTitle>
+<section class="admin-page">
+    <div class="admin-head">
+        <div>
+            <p class="admin-kicker">TRUST / LEGAL / CONTACT</p>
+            <h1>صفحات قوانین و ارتباط با ما</h1>
+            <p>محتوای درباره ما، قوانین سایت، حریم خصوصی، مرجوعی، ارسال و پیام‌های تماس مشتری‌ها از این بخش مدیریت می‌شود.</p>
+        </div>
+        <a class="admin-secondary" href="/contact" target="_blank">مشاهده صفحه تماس</a>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(message))
+    {
+        <div class="admin-placeholder">@message</div>
+    }
+
+    @if (loading)
+    {
+        <div class="admin-placeholder">در حال دریافت صفحات...</div>
+    }
+    else
+    {
+        <section class="admin-card">
+            <div class="section-title"><h2>ویرایش صفحه</h2><span>@pages.Count صفحه</span></div>
+            <label class="field-label">انتخاب صفحه
+                <select class="input" @bind="SelectedSlug">
+                    @foreach (var policyPage in pages.OrderBy(x => x.SortOrder))
+                    {
+                        <option value="@(policyPage.Slug)">@($"{policyPage.Title} ({policyPage.Slug})")</option>
+                    }
+                </select>
+            </label>
+
+            @if (editPage is not null)
+            {
+                <EditForm Model="editPage" OnValidSubmit="SavePageAsync">
+                    <RecursiveDataAnnotationsValidator />
+                    <ValidationSummary />
+                    <div class="admin-grid two">
+                        <label class="field-label">Slug فارسی / انگلیسی
+                            <InputText class="input" dir="auto" maxlength="80" @bind-Value="editPage.Slug" />
+                            <small>@SeoSlug.LegalPagePath(editPage.Slug)</small>
+                            <ValidationMessage For="() => editPage.Slug" />
+                        </label>
+                        <label class="field-label">عنوان
+                            <InputText class="input" maxlength="180" @bind-Value="editPage.Title" />
+                            <ValidationMessage For="() => editPage.Title" />
+                        </label>
+                        <label class="field-label">SEO Title
+                            <InputText class="input" maxlength="65" @bind-Value="editPage.SeoTitle" />
+                            <small>@(editPage.SeoTitle?.Length ?? 0) از ۶۵ کاراکتر</small>
+                            <ValidationMessage For="() => editPage.SeoTitle" />
+                        </label>
+                        <label class="field-label">SEO Description
+                            <InputText class="input" maxlength="160" @bind-Value="editPage.SeoDescription" />
+                            <small>@(editPage.SeoDescription?.Length ?? 0) از ۱۶۰ کاراکتر</small>
+                            <ValidationMessage For="() => editPage.SeoDescription" />
+                        </label>
+                    </div>
+                    <div class="seo-snippet-preview">
+                        <small>@SeoSlug.LegalPagePath(editPage.Slug)</small>
+                        <strong>@(string.IsNullOrWhiteSpace(editPage.SeoTitle) ? editPage.Title : editPage.SeoTitle)</strong>
+                        <p>@(string.IsNullOrWhiteSpace(editPage.SeoDescription) ? editPage.Summary : editPage.SeoDescription)</p>
+                    </div>
+                    <label class="field-label">خلاصه
+                        <InputTextArea class="input" rows="3" maxlength="700" @bind-Value="editPage.Summary" />
+                        <ValidationMessage For="() => editPage.Summary" />
+                    </label>
+                    <label class="field-label">متن صفحه / HTML مجاز
+                        <InputTextArea class="input" rows="12" maxlength="12000" @bind-Value="editPage.Body" />
+                        <ValidationMessage For="() => editPage.Body" />
+                    </label>
+                    <div class="admin-grid two">
+                        <label class="check-row"><InputCheckbox @bind-Value="editPage.IsPublished" /> منتشر باشد</label>
+                        <label class="field-label">ترتیب نمایش
+                            <InputNumber class="input" @bind-Value="editPage.SortOrder" min="0" max="9999" />
+                            <ValidationMessage For="() => editPage.SortOrder" />
+                        </label>
+                    </div>
+                    <AuthorizeView Policy="@PermissionNames.AdminLegalManage">
+                        <Authorized Context="legalAuthorization"><button type="submit" class="admin-primary" disabled="@saving">@(saving ? "در حال ذخیره..." : "ذخیره صفحه")</button></Authorized>
+                    </AuthorizeView>
+                </EditForm>
+            }
+        </section>
+
+        <section class="admin-card">
+            <div class="section-title"><h2>پیام‌های تماس</h2><span>@messages.Count پیام</span></div>
+            <div class="admin-table-wrap">
+                <table>
+                    <thead><tr><th>تاریخ</th><th>نام</th><th>موبایل</th><th>موضوع</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+                    <tbody>
+                        @foreach (var item in messages)
+                        {
+                            <tr>
+                                <td>@item.CreatedAt.LocalDateTime.ToString("yyyy/MM/dd HH:mm")</td>
+                                <td><b>@item.FullName</b><br /><small>@item.Email</small></td>
+                                <td>@item.Mobile</td>
+                                <td>@item.Subject<br /><small>@item.Message</small></td>
+                                <td>@StatusLabel(item.Status)</td>
+                                <td>
+                                    <AuthorizeView Policy="@PermissionNames.AdminLegalManage">
+                                        <Authorized>
+                                            <button class="admin-secondary" @onclick="() => MarkContactAsync(item.Id, StatusSeen)">دیده شد</button>
+                                            <button class="admin-secondary" @onclick="() => MarkContactAsync(item.Id, StatusAnswered)">پاسخ داده شد</button>
+                                        </Authorized>
+                                    </AuthorizeView>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+</section>
+
+@code {
+    private const string StatusSeen = "seen";
+    private const string StatusAnswered = "answered";
+    private bool loading = true;
+    private bool saving;
+    private string? message;
+    private IReadOnlyCollection<StorePolicyPageDto> pages = Array.Empty<StorePolicyPageDto>();
+    private IReadOnlyCollection<ContactMessageDto> messages = Array.Empty<ContactMessageDto>();
+    private string? selectedSlug;
+    private UpsertStorePolicyPageRequest? editPage;
+
+    private string? SelectedSlug
+    {
+        get => selectedSlug;
+        set
+        {
+            selectedSlug = value;
+            SyncEditPage();
+        }
+    }
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        message = null;
+        try
+        {
+            pages = (await Admin.LegalPagesAsync()).RequireUiData();
+            messages = (await Admin.ContactMessagesAsync()).RequireUiData();
+            selectedSlug ??= pages.OrderBy(x => x.SortOrder).FirstOrDefault()?.Slug;
+            SyncEditPage();
+        }
+        catch (Exception ex) { message = ex.Message; }
+        finally { loading = false; }
+    }
+
+    private void SyncEditPage()
+    {
+        var page = pages.FirstOrDefault(x => x.Slug == selectedSlug) ?? pages.OrderBy(x => x.SortOrder).FirstOrDefault();
+        if (page is null) { editPage = null; return; }
+        selectedSlug = page.Slug;
+        editPage = new UpsertStorePolicyPageRequest
+        {
+            Slug = page.Slug,
+            Title = page.Title,
+            Summary = page.Summary,
+            Body = page.Body,
+            SeoTitle = page.SeoTitle,
+            SeoDescription = page.SeoDescription,
+            IsPublished = page.IsPublished,
+            SortOrder = page.SortOrder
+        };
+    }
+
+    private async Task SavePageAsync()
+    {
+        if (editPage is null) return;
+        saving = true;
+        message = null;
+        try
+        {
+            editPage.Slug = SeoSlug.Normalize(editPage.Slug);
+            (await Admin.UpdateLegalPageAsync(selectedSlug ?? editPage.Slug, editPage)).RequireUiData();
+            message = "صفحه ذخیره شد.";
+            await LoadAsync();
+        }
+        catch (Exception ex) { message = ex.Message; }
+        finally { saving = false; }
+    }
+
+    private async Task MarkContactAsync(Guid id, string status)
+    {
+        try
+        {
+            (await Admin.UpdateContactMessageAsync(id, new UpdateContactMessageStatusRequest { Status = status })).RequireUiData();
+            await LoadAsync();
+        }
+        catch (Exception ex) { message = ex.Message; }
+    }
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "new" => "جدید",
+        "seen" => "دیده‌شده",
+        "answered" => "پاسخ داده‌شده",
+        "closed" => "بسته‌شده",
+        _ => status
+    };
+}

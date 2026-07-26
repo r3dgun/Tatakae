@@ -1,0 +1,445 @@
+@page "/product/{Slug}"
+@page "/products/{Slug}"
+@inject IStoreApiClient Store
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject ICartState Cart
+@inject IAuthSessionStore Auth
+@inject IWishlistApiClient Wishlist
+
+@if (loading)
+{
+    <section class="shop panel"><div class="ink-state">در حال آماده‌سازی صفحه محصول...</div></section>
+}
+else if (product is null)
+{
+    <SeoHead Title="محصول پیدا نشد | Tatakae" Description="محصول درخواستی در فروشگاه Tatakae پیدا نشد." Path="@($"/product/{SeoSlug.Normalize(Slug)}")" Index="false" Follow="false" />
+    <section class="shop panel"><div class="ink-state"><div><h1>محصول پیدا نشد</h1><p>ممکن است اسلاگ محصول تغییر کرده باشد.</p><a href="/shop">بازگشت به فروشگاه</a></div></div></section>
+}
+else
+{
+    <SeoHead Title="@product.Seo.MetaTitle"
+             Description="@product.Seo.MetaDescription"
+             Path="@(product.Seo.CanonicalPath ?? $"/product/{product.Slug}")"
+             Type="product"
+             Image="@OpenGraphImage"
+             JsonLd="@JsonLd"
+             Index="@product.Seo.AllowIndex"
+             Follow="@product.Seo.AllowFollow" />
+
+    <section class="drop panel" data-accent="@Theme" id="product">
+        <div class="drop-number">01</div>
+        <div class="ink-detail-copy parallax" data-speed="0.06">
+            <p class="eyebrow">PRODUCT / @product.CategorySlug</p>
+            <h1 class="fa-title">@product.Name</h1>
+            <p>@product.ShortDescription</p>
+
+            <div class="ink-price">
+                <strong>@Currency.Format(CurrentPrice)</strong>
+                @if (selectedVariant?.SalePrice is not null)
+                {
+                    <del>@Currency.Format(selectedVariant.RegularPrice)</del>
+                }
+            </div>
+
+            <div class="ink-option-set">
+                <h3>انتخاب رنگ و سایز</h3>
+                <div class="ink-variants">
+                    @foreach (var variant in product.Variants.Where(x => x.IsActive))
+                    {
+                        <button type="button" disabled="@(!variant.IsInStock)" class="@(variant.Id == selectedVariant?.Id ? "active" : null)" @onclick="() => selectedVariant = variant">
+                            @variant.ColorName / @variant.Size
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <div class="ink-option-set">
+                <h3>وضعیت سفارش</h3>
+                <p>@(selectedVariant?.IsInStock == true ? $"موجود · {selectedVariant.AvailableQuantity} عدد" : "این واریانت فعلاً ناموجود است")</p>
+                <p class="ready-made-hint">@(product.SupportsEmbroidery ? "این مدل قابل شخصی‌سازی در استودیو است." : "این محصول از قبل گلدوزی شده و مستقیماً به سبد خرید اضافه می‌شود.")</p>
+            </div>
+
+            <div class="ink-actions">
+                @if (product.SupportsEmbroidery)
+                {
+                    <a class="primary @(selectedVariant?.IsInStock == true ? null : "disabled")" href="@(selectedVariant is null ? "#" : $"/customize/{product.Slug}?variant={selectedVariant.Id}")">شروع طراحی گلدوزی ↙</a>
+                }
+                else
+                {
+                    <button type="button" class="primary @(selectedVariant?.IsInStock == true ? null : "disabled")" disabled="@(selectedVariant?.IsInStock != true)" @onclick="AddReadyMadeToCart">افزودن محصول آماده به سبد ↙</button>
+                }
+                <button type="button" class="ghost" @onclick="ToggleWishlistAsync">@(isWishlisted ? "حذف از علاقه‌مندی" : "افزودن به علاقه‌مندی")</button>
+                <a href="/shop">بازگشت به فروشگاه</a>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(cartMessage))
+            {
+                <p class="ready-made-message">@cartMessage</p>
+            }
+            @if (!string.IsNullOrWhiteSpace(wishlistMessage))
+            {
+                <p class="ready-made-message">@wishlistMessage</p>
+            }
+        </div>
+
+        <article class="image-portal tall ink-detail-media" data-theme="@Theme" data-label="OPEN PRODUCT">
+            <img class="base" src="@SelectedImageUrl" onerror="this.onerror=null;this.src='@FallbackImage';" alt="@SelectedImageAlt" />
+            <img class="reveal" src="@RevealImageUrl" onerror="this.onerror=null;this.src='@FallbackImage';" alt="@product.Name" />
+            <div class="portal-meta"><span>@product.CategoryName</span><b>DETAIL ↙</b></div>
+            <span class="jp">刺繍</span>
+        </article>
+        <div class="kanji">刺<br/>繍</div>
+    </section>
+
+    <section class="shop panel ai-answer-summary" data-accent="paper" aria-labelledby="product-fast-facts">
+        <div class="section-head">
+            <p class="eyebrow">QUICK ANSWER / PRODUCT FACTS</p>
+            <h2 id="product-fast-facts">خلاصه سریع محصول</h2>
+            <p>@product.ShortDescription</p>
+        </div>
+        <dl class="ai-fact-grid">
+            <div><dt>نوع محصول</dt><dd>@product.CategoryName</dd></div>
+            <div><dt>نوع سفارش</dt><dd>@(product.SupportsEmbroidery ? "قابل شخصی‌سازی با گلدوزی" : "گلدوزی آماده")</dd></div>
+            <div><dt>وضعیت موجودی</dt><dd>@(product.IsInStock ? "موجود" : "ناموجود")</dd></div>
+            <div><dt>شروع قیمت</dt><dd>@Currency.Format(product.Variants.Where(x => x.IsActive).Select(x => x.EffectivePrice).DefaultIfEmpty(0m).Min())</dd></div>
+            <div><dt>جنس</dt><dd>@product.Material</dd></div>
+            <div><dt>فیت</dt><dd>@product.Fit</dd></div>
+        </dl>
+    </section>
+
+    <section class="shop panel" data-accent="paper">
+        <div class="section-head"><p class="eyebrow">DETAIL / CARE</p><h2>FIT<br>GUIDE.</h2><p>@product.Description</p></div>
+        <div class="ink-specs">
+            <article>
+                <h2>راهنمای نگهداری</h2>
+                <p>@product.CareGuide</p>
+                <h2>@(product.SupportsEmbroidery ? "استودیو گلدوزی" : "محصول آماده")</h2>
+                <p>@(product.SupportsEmbroidery ? "این محصول برای گلدوزی سفارشی آماده شده؛ متن، فایل، رنگ نخ، محل اجرا و اندازه را در استودیو مشخص کن." : "این محصول از قبل گلدوزی شده است؛ مشتری فقط سایز و رنگ موجود را انتخاب می‌کند و مستقیم وارد سبد خرید می‌شود.")</p>
+            </article>
+            <aside>
+                <h2>مشخصات</h2>
+                <dl>
+                    <div><dt>جنس</dt><dd>@product.Material</dd></div>
+                    <div><dt>فیت</dt><dd>@product.Fit</dd></div>
+                    @foreach (var spec in product.Specifications)
+                    {
+                        <div><dt>@spec.Name</dt><dd>@spec.Value</dd></div>
+                    }
+                </dl>
+            </aside>
+        </div>
+    </section>
+
+    @if (similarProducts.Count > 0)
+    {
+        <section class="shop panel" data-accent="paper">
+            <div class="section-head">
+                <p class="eyebrow">YOU MAY ALSO LIKE</p>
+                <h2>محصولات مشابه</h2>
+                <p>بر اساس دسته، تگ، وضعیت موجودی و سبک همین محصول پیشنهاد شده‌اند.</p>
+            </div>
+            <div class="ink-commerce-grid ink-recommendation-grid">
+                @foreach (var recommendation in similarProducts)
+                {
+                    <div class="recommendation-wrap">
+                        <span class="recommendation-reason">@recommendation.Reason</span>
+                        <ProductCard Product="recommendation.Product" />
+                    </div>
+                }
+            </div>
+        </section>
+    }
+
+    <section class="shop panel ink-review-section" data-accent="paper">
+        <div class="section-head">
+            <p class="eyebrow">CUSTOMER REVIEWS</p>
+            <h2 class="qa-title">نظر مشتری‌ها</h2>
+            <p>نظر فقط بعد از خرید و تحویل سفارش ثبت می‌شود؛ برای همین امتیازها قابل اعتمادتر هستند.</p>
+        </div>
+        <div class="ink-review-summary">
+            <strong>@ratingSummary.AverageRating.ToString("0.0")</strong>
+            <span>از ۵</span>
+            <small>@ratingSummary.ReviewCount نظر · @ratingSummary.BuyerReviewCount خریدار واقعی · @ratingSummary.RecommendationPercent٪ پیشنهاد کرده‌اند</small>
+        </div>
+        <div class="ink-qa-board">
+            <div class="ink-qa-list">
+                @if (reviews.Count == 0)
+                {
+                    <article class="ink-qa-card"><h3>هنوز نظری ثبت نشده</h3><p>اولین نظر بعد از خرید و تحویل سفارش نمایش داده می‌شود.</p></article>
+                }
+                @foreach (var review in reviews)
+                {
+                    <article class="ink-qa-card ink-review-card">
+                        <div class="review-card-head">
+                            <h3>@review.CustomerName</h3>
+                            <span>@Stars(review.Rating)</span>
+                        </div>
+                        <b>@review.Title</b>
+                        <p>@review.Body</p>
+                        @if (review.IsBuyer)
+                        {
+                            <small class="verified-buyer">خریدار تأییدشده</small>
+                        }
+                        @if (review.PositivePoints.Count > 0)
+                        {
+                            <p class="ink-answer"><b>نکات مثبت:</b> @string.Join("، ", review.PositivePoints)</p>
+                        }
+                        @if (review.NegativePoints.Count > 0)
+                        {
+                            <p class="ink-answer"><b>نکات منفی:</b> @string.Join("، ", review.NegativePoints)</p>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(review.AdminReply))
+                        {
+                            <p class="ink-answer"><b>پاسخ Tatakae:</b> @review.AdminReply</p>
+                        }
+                    </article>
+                }
+            </div>
+            <EditForm Model="reviewForm" OnValidSubmit="SubmitReviewAsync" class="ink-qa-form">
+                <RecursiveDataAnnotationsValidator />
+                <h3>ثبت نظر بعد از خرید</h3>
+                <ValidationSummary />
+                <label>امتیاز
+                    <InputSelect @bind-Value="reviewForm.Rating">
+                        <option value="5">۵ - عالی</option>
+                        <option value="4">۴ - خوب</option>
+                        <option value="3">۳ - متوسط</option>
+                        <option value="2">۲ - ضعیف</option>
+                        <option value="1">۱ - خیلی ضعیف</option>
+                    </InputSelect>
+                    <ValidationMessage For="() => reviewForm.Rating" />
+                </label>
+                <label>عنوان نظر
+                    <InputText placeholder="عنوان نظر" maxlength="120" @bind-Value="reviewForm.Title" />
+                    <ValidationMessage For="() => reviewForm.Title" />
+                </label>
+                <label>متن نظر
+                    <InputTextArea rows="5" maxlength="2000" placeholder="تجربه خرید، کیفیت پارچه و گلدوزی" @bind-Value="reviewForm.Body" />
+                    <ValidationMessage For="() => reviewForm.Body" />
+                </label>
+                <label>نکات مثبت
+                    <InputText placeholder="با کاما جدا کن" maxlength="500" @bind-Value="reviewForm.PositivePointsCsv" />
+                    <ValidationMessage For="() => reviewForm.PositivePointsCsv" />
+                </label>
+                <label>نکات منفی
+                    <InputText placeholder="اختیاری" maxlength="500" @bind-Value="reviewForm.NegativePointsCsv" />
+                    <ValidationMessage For="() => reviewForm.NegativePointsCsv" />
+                </label>
+                <label class="inline-check"><InputCheckbox @bind-Value="reviewForm.RecommendProduct" /> این محصول را پیشنهاد می‌کنم</label>
+                <button type="submit">ثبت نظر</button>
+                <p class="ink-qa-note">نظر بعد از تأیید ادمین در صفحه محصول منتشر می‌شود.</p>
+                @if (!string.IsNullOrWhiteSpace(reviewMessage))
+                {
+                    <p class="ink-qa-note">@reviewMessage</p>
+                }
+            </EditForm>
+        </div>
+    </section>
+
+    <section id="questions" class="shop panel ink-qa-section" data-accent="paper">
+        <div class="section-head">
+            <p class="eyebrow">PRODUCT Q/A</p>
+            <h2 class="qa-title">پرسش و پاسخ</h2>
+            <p>مشتری می‌تواند قبل از ورود به استودیو، درباره جنس، محل گلدوزی، فایل طرح و نحوه سفارش سؤال بپرسد.</p>
+        </div>
+        <div class="ink-qa-board">
+            <div class="ink-qa-list">
+                @foreach (var question in questions)
+                {
+                    <article class="ink-qa-card">
+                        <h3>@question.AuthorName</h3>
+                        <p>@question.QuestionText</p>
+                        @if (!string.IsNullOrWhiteSpace(question.AnswerText))
+                        {
+                            <p class="ink-answer"><b>پاسخ Tatakae:</b> @question.AnswerText</p>
+                        }
+                        else
+                        {
+                            <p class="ink-answer"><b>در انتظار پاسخ ادمین</b></p>
+                        }
+                    </article>
+                }
+            </div>
+            <EditForm Model="questionForm" OnValidSubmit="SubmitQuestionAsync" class="ink-qa-form">
+                <RecursiveDataAnnotationsValidator />
+                <h3>سؤال بپرس</h3>
+                <ValidationSummary />
+                <label>نام شما
+                    <InputText placeholder="نام شما" maxlength="80" @bind-Value="questionForm.AuthorName" />
+                    <ValidationMessage For="() => questionForm.AuthorName" />
+                </label>
+                <label>موبایل اختیاری
+                    <InputText placeholder="09123456789" inputmode="tel" maxlength="20" @bind-Value="questionForm.Mobile" />
+                    <ValidationMessage For="() => questionForm.Mobile" />
+                </label>
+                <label>متن پرسش
+                    <InputTextArea rows="5" maxlength="1200" placeholder="سؤال درباره گلدوزی، سایز یا محصول" @bind-Value="questionForm.QuestionText" />
+                    <ValidationMessage For="() => questionForm.QuestionText" />
+                </label>
+                <button type="submit">ثبت پرسش</button>
+                <p class="ink-qa-note">پرسش بعد از بررسی ادمین در صفحه محصول نمایش داده می‌شود.</p>
+                @if (!string.IsNullOrWhiteSpace(questionMessage))
+                {
+                    <p class="ink-qa-note">@questionMessage</p>
+                }
+            </EditForm>
+        </div>
+    </section>
+
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = string.Empty;
+    private ProductDetailDto? product;
+    private ProductImageDto? selectedImage;
+    private ProductVariantDto? selectedVariant;
+    private bool loading = true;
+    private IReadOnlyCollection<ProductQuestionDto> questions = Array.Empty<ProductQuestionDto>();
+    private IReadOnlyCollection<ProductReviewDto> reviews = Array.Empty<ProductReviewDto>();
+    private ProductRatingSummaryDto ratingSummary = new(Guid.Empty, 0, 0, new Dictionary<int, int>(), 0, 0);
+    private SubmitProductQuestionRequest questionForm = new();
+    private CreateProductReviewRequest reviewForm = new() { Rating = 5, RecommendProduct = true };
+    private string? questionMessage;
+    private string? cartMessage;
+    private string? wishlistMessage;
+    private string? reviewMessage;
+    private bool isWishlisted;
+    private bool recordedView;
+    private IReadOnlyCollection<ProductRecommendationDto> similarProducts = Array.Empty<ProductRecommendationDto>();
+
+    private IReadOnlyCollection<ProductImageDto> ProductImages => product?.Images.Count > 0
+        ? product.Images
+        : new[] { new ProductImageDto(Guid.Empty, "/ink/assets/fallback-red.svg", product?.Name ?? "محصول", true, 0) };
+
+    private string Theme => product?.CategorySlug.Contains("hood", StringComparison.OrdinalIgnoreCase) == true ? "void" : product?.CategorySlug.Contains("sweat", StringComparison.OrdinalIgnoreCase) == true ? "signal" : product?.CategorySlug.Contains("polo", StringComparison.OrdinalIgnoreCase) == true ? "paper" : "vermilion";
+    private string SelectedImageUrl => InkImageFor(product?.Slug ?? Slug, (selectedImage ?? ProductImages.OrderByDescending(x => x.IsPrimary).ThenBy(x => x.SortOrder).First()).Url);
+    private string RevealImageUrl => Theme switch { "void" => "https://i.pinimg.com/736x/31/4e/62/314e626f5effb864c7303ef2b93b351e.jpg", "paper" => "https://i.pinimg.com/736x/62/53/e3/6253e3aca16a432bbec7b273a970cea5.jpg", "signal" => "https://i.pinimg.com/736x/8d/83/fc/8d83fcd41cd102d02ebe678de4e8838c.jpg", _ => "https://i.pinimg.com/736x/04/0b/0d/040b0d190fcd1a10d9691e35ef75235c.jpg" };
+    private string FallbackImage => Theme switch { "void" => "/ink/assets/fallback-black.svg", "paper" => "/ink/assets/fallback-white.svg", "signal" => "/ink/assets/fallback-neon.svg", _ => "/ink/assets/fallback-red.svg" };
+    private string SelectedImageAlt => (selectedImage ?? ProductImages.OrderByDescending(x => x.IsPrimary).ThenBy(x => x.SortOrder).First()).AltText;
+    private decimal CurrentPrice => selectedVariant?.EffectivePrice ?? product?.Variants.Where(x => x.IsActive).Select(x => x.EffectivePrice).DefaultIfEmpty(0m).Min() ?? 0m;
+    private string Canonical => Navigation.ToAbsoluteUri(SeoSlug.NormalizeCanonicalPath(product?.Seo.CanonicalPath, $"/product/{product?.Slug ?? SeoSlug.Normalize(Slug)}")).ToString();
+    private string OpenGraphImage => product?.Seo.OpenGraphImageUrl ?? SelectedImageUrl;
+    private string JsonLd => product is null
+        ? string.Empty
+        : AiStructuredData.BuildProductGraph(
+            Navigation.BaseUri,
+            product,
+            ratingSummary,
+            reviews,
+            questions,
+            Canonical,
+            ProductImages.Select(x => InkImageFor(product.Slug, x.Url)).ToArray());
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loading = true;
+        product = (await Store.GetProductAsync(Slug)).OptionalData();
+        questionForm.ProductId = product?.Id ?? Guid.Empty;
+        reviewForm.ProductId = product?.Id ?? Guid.Empty;
+        selectedImage = ProductImages.OrderByDescending(x => x.IsPrimary).ThenBy(x => x.SortOrder).FirstOrDefault();
+        selectedVariant = product?.Variants.FirstOrDefault(x => x.IsActive && x.IsInStock) ?? product?.Variants.FirstOrDefault(x => x.IsActive) ?? product?.Variants.FirstOrDefault();
+        questions = product is null ? Array.Empty<ProductQuestionDto>() : (await Store.GetProductQuestionsAsync(product.Id)).RequireUiData();
+        reviews = product is null ? Array.Empty<ProductReviewDto>() : (await Store.GetProductReviewsAsync(product.Id)).RequireUiData();
+        ratingSummary = product is null ? new ProductRatingSummaryDto(Guid.Empty, 0, 0, new Dictionary<int, int>(), 0, 0) : (await Store.GetProductRatingSummaryAsync(product.Id)).RequireUiData();
+        similarProducts = product is null ? Array.Empty<ProductRecommendationDto>() : (await Store.GetSimilarProductsAsync(product.Slug, 6)).RequireUiData();
+        await Auth.EnsureLoadedAsync();
+        isWishlisted = product is not null && Auth.IsSignedIn && (await Wishlist.IsWishlistedAsync(product.Id)).RequireUiData();
+        recordedView = false;
+        loading = false;
+    }
+
+    private void AddReadyMadeToCart()
+    {
+        if (product is null || selectedVariant is null || !selectedVariant.IsInStock) return;
+        Cart.AddReadyMade(product, selectedVariant);
+        cartMessage = "محصول آماده به سبد خرید اضافه شد.";
+    }
+
+    private async Task ToggleWishlistAsync()
+    {
+        if (product is null) return;
+        await Auth.EnsureLoadedAsync();
+        if (!Auth.IsSignedIn)
+        {
+            Navigation.NavigateTo($"/login?returnUrl=/product/{product.Slug}");
+            return;
+        }
+
+        var result = await Wishlist.ToggleAsync(product.Id);
+        wishlistMessage = result.Message;
+        if (!result.IsSuccess || result.Data is null) return;
+
+        isWishlisted = result.Data.IsWishlisted;
+    }
+
+    private async Task SubmitReviewAsync()
+    {
+        if (product is null) return;
+        await Auth.EnsureLoadedAsync();
+        if (!Auth.IsSignedIn)
+        {
+            Navigation.NavigateTo($"/login?returnUrl=/product/{product.Slug}");
+            return;
+        }
+        reviewForm.ProductId = product.Id;
+        reviewForm.Title = reviewForm.Title.Trim();
+        reviewForm.Body = reviewForm.Body.Trim();
+        reviewForm.PositivePointsCsv = string.IsNullOrWhiteSpace(reviewForm.PositivePointsCsv) ? null : reviewForm.PositivePointsCsv.Trim();
+        reviewForm.NegativePointsCsv = string.IsNullOrWhiteSpace(reviewForm.NegativePointsCsv) ? null : reviewForm.NegativePointsCsv.Trim();
+        var result = await Store.SubmitProductReviewAsync(reviewForm);
+        reviewMessage = result.Message;
+        if (result.IsSuccess)
+        {
+            reviewForm = new CreateProductReviewRequest { ProductId = product.Id, Rating = 5, RecommendProduct = true };
+        }
+    }
+
+    private static string Stars(int rating) => new('★', Math.Clamp(rating, 1, 5));
+
+    private async Task SubmitQuestionAsync()
+    {
+        if (product is null) return;
+        questionForm.ProductId = product.Id;
+        questionForm.AuthorName = questionForm.AuthorName.Trim();
+        questionForm.Mobile = string.IsNullOrWhiteSpace(questionForm.Mobile) ? null : IranianInputNormalizer.NormalizeIranianMobile(questionForm.Mobile);
+        questionForm.QuestionText = questionForm.QuestionText.Trim();
+
+        var result = await Store.SubmitProductQuestionAsync(questionForm);
+        questionMessage = result.Message;
+        if (result.IsSuccess && result.Data is not null)
+        {
+            questions = questions.Concat(new[] { result.Data }).ToArray();
+            questionForm = new SubmitProductQuestionRequest { ProductId = product.Id };
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("tatakaeInk.init");
+        if (!recordedView && product is not null)
+        {
+            recordedView = true;
+            await JS.InvokeVoidAsync("tatakaeEngagement.trackViewedProduct", ToProductCard(product));
+        }
+    }
+
+    private ProductCardDto ToProductCard(ProductDetailDto item)
+    {
+        var primary = ProductImages.OrderByDescending(x => x.IsPrimary).ThenBy(x => x.SortOrder).First();
+        var starting = item.Variants.Where(x => x.IsActive).Select(x => x.EffectivePrice).DefaultIfEmpty(0m).Min();
+        var regular = item.Variants.Where(x => x.IsActive).Select(x => x.RegularPrice).DefaultIfEmpty(starting).Min();
+        return new ProductCardDto(item.Id, item.Name, item.Slug, item.CategoryName, item.CategorySlug, SelectedImageUrl, primary.AltText, item.ShortDescription, starting, regular > starting ? regular : null, item.IsInStock, item.IsFeatured, item.SupportsEmbroidery, item.Tags);
+    }
+
+    private string AbsoluteUrl(string url) => Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri.ToString() : Navigation.ToAbsoluteUri(url).ToString();
+
+    private static string InkImageFor(string slug, string current)
+    {
+        if (!string.IsNullOrWhiteSpace(current) && current.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return current;
+        if (slug.Contains("hood", StringComparison.OrdinalIgnoreCase)) return "https://i.pinimg.com/736x/8d/83/fc/8d83fcd41cd102d02ebe678de4e8838c.jpg";
+        if (slug.Contains("polo", StringComparison.OrdinalIgnoreCase)) return "https://i.pinimg.com/736x/31/4e/62/314e626f5effb864c7303ef2b93b351e.jpg";
+        if (slug.Contains("sweat", StringComparison.OrdinalIgnoreCase) || slug.Contains("crew", StringComparison.OrdinalIgnoreCase)) return "https://i.pinimg.com/736x/04/0b/0d/040b0d190fcd1a10d9691e35ef75235c.jpg";
+        if (slug.Contains("oversize", StringComparison.OrdinalIgnoreCase)) return "https://i.pinimg.com/736x/04/0b/0d/040b0d190fcd1a10d9691e35ef75235c.jpg";
+        return "https://i.pinimg.com/736x/62/53/e3/6253e3aca16a432bbec7b273a970cea5.jpg";
+    }
+}

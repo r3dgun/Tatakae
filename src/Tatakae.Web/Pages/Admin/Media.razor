@@ -1,0 +1,102 @@
+@page "/admin/media"
+@layout AdminLayout
+@attribute [Authorize(Policy = PermissionNames.AdminMediaView)]
+@using Tatakae.Application.Contracts.Files
+@using Microsoft.AspNetCore.Components.Forms
+@inject IAdminApiClient Admin
+@inject IFileUploadApiClient Uploader
+
+<h1>مدیریت فایل‌ها</h1>
+<p class="admin-muted">فایل‌های آپلودشده برای تصویر محصول، بنر، آواتار یا طرح گلدوزی اینجا قابل مشاهده، آپلود و حذف هستند.</p>
+
+<div class="admin-grid two">
+    <section class="admin-card">
+        <h3>آپلود فایل</h3>
+        <p class="admin-muted">نوع فایل مجاز: PNG, JPG, WEBP, SVG, PDF, DST, PES تا ۱۵ مگابایت.</p>
+        <label>کاربرد فایل
+            <select @bind="purpose">
+                <option value="EmbroideryArtwork">طرح گلدوزی</option>
+                <option value="ProductImage">تصویر محصول</option>
+                <option value="ProductGallery">گالری محصول</option>
+                <option value="Banner">بنر</option>
+                <option value="Avatar">آواتار</option>
+            </select>
+        </label>
+        <InputFile OnChange="Upload" accept=".png,.jpg,.jpeg,.webp,.svg,.pdf,.dst,.pes" />
+        @if (!string.IsNullOrWhiteSpace(message)) { <p class="form-message">@message</p> }
+        @if (!string.IsNullOrWhiteSpace(error)) { <p class="form-error">@error</p> }
+    </section>
+
+    <section class="admin-card">
+        <h3>رسانه‌ها</h3>
+        @if (items.Count == 0)
+        {
+            <p class="admin-muted">هنوز فایلی در کتابخانه رسانه ثبت نشده است.</p>
+        }
+        else
+        {
+            <div class="admin-media-grid">
+                @foreach (var item in items)
+                {
+                    <article class="admin-media-card">
+                        @if (item.ContentType.StartsWith("image/"))
+                        {
+                            <img src="@item.Url" alt="@item.FileName" />
+                        }
+                        else
+                        {
+                            <div class="admin-file-icon">FILE</div>
+                        }
+                        <b>@item.FileName</b>
+                        <small>@item.Purpose · @(item.SizeBytes / 1024) KB</small>
+                        <a href="@item.Url" target="_blank">مشاهده</a>
+                        <button @onclick="() => Delete(item.Id)">حذف</button>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private IReadOnlyCollection<FileUploadDto> items = Array.Empty<FileUploadDto>();
+    private string purpose = "EmbroideryArtwork";
+    private string? message;
+    private string? error;
+    protected override async Task OnInitializedAsync() => await Load();
+    private async Task Load() => items = (await Admin.MediaAsync()).RequireUiData();
+    private async Task Upload(InputFileChangeEventArgs args)
+    {
+        message = null;
+        error = null;
+        var file = args.File;
+        var extension = System.IO.Path.GetExtension(file.Name).ToLowerInvariant();
+        string[] allowedExtensions = [".png", ".jpg", ".jpeg", ".webp", ".svg", ".pdf", ".dst", ".pes"];
+        string[] allowedPurposes = ["EmbroideryArtwork", "ProductImage", "ProductGallery", "Banner", "Avatar"];
+
+        if (!allowedPurposes.Contains(purpose))
+        {
+            error = "کاربرد فایل معتبر نیست.";
+            return;
+        }
+        if (!allowedExtensions.Contains(extension))
+        {
+            error = "فرمت فایل مجاز نیست. فقط PNG، JPG، WEBP، SVG، PDF، DST و PES پذیرفته می‌شود.";
+            return;
+        }
+        if (file.Size <= 0 || file.Size > 15_000_000)
+        {
+            error = "حجم فایل باید بیشتر از صفر و حداکثر ۱۵ مگابایت باشد.";
+            return;
+        }
+
+        try
+        {
+            var result = (await Uploader.UploadAsync(file, purpose)).RequireUiData();
+            message = $"فایل {result.FileName} آپلود شد.";
+            await Load();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+    private async Task Delete(Guid id) { (await Admin.DeleteMediaAsync(id)).EnsureUiSuccess(); await Load(); }
+}

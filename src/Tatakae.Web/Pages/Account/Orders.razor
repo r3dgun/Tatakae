@@ -1,0 +1,66 @@
+@page "/account/orders"
+@inject IAuthSessionStore Auth
+@inject IAccountApiClient AccountApi
+@inject NavigationManager Navigation
+
+<SeoHead Title="سفارش‌های من | Tatakae" Description="مشاهده و پیگیری سفارش‌های حساب کاربری Tatakae." Path="/account/orders" Index="false" Follow="false" />
+<section class="section" id="orders">
+    <div class="wrap">
+        <div class="section-head reveal">
+            <div>
+                <span class="eyebrow">my orders</span>
+                <h1 class="title" style="margin-top:14px">سفارش‌های من</h1>
+                <p class="lead" style="margin-top:12px;max-width:760px">فقط سفارش‌هایی که با حساب کاربری فعلی ثبت شده‌اند نمایش داده می‌شوند.</p>
+            </div>
+            <a class="ghost" href="/shop">ثبت سفارش جدید</a>
+        </div>
+
+        @if (loading)
+        {
+            <div class="loading-state">در حال دریافت سفارش‌ها...</div>
+        }
+        else if (!Auth.IsSignedIn)
+        {
+            <div class="ink-auth-required">
+                <div><span class="eyebrow">login required</span><h2>برای مشاهده سفارش‌ها وارد شو</h2><p>بعد از ورود، سفارش‌های همین حساب نمایش داده می‌شود.</p></div>
+                <div class="ink-auth-actions"><a class="pill-btn" href="/login?returnUrl=/account/orders">ورود</a><a class="ghost" href="/register?returnUrl=/account/orders">ثبت‌نام</a></div>
+            </div>
+        }
+        else if (orders.Count == 0)
+        {
+            <div class="empty-state">هنوز سفارشی با این حساب ثبت نشده است.</div>
+        }
+        else
+        {
+            <div class="order-list blazor-orders">
+                @foreach (var order in orders) { <OrderCard Order="order" Tracking="@GetTracking(order.Id)" /> }
+            </div>
+        }
+    </div>
+</section>
+
+@code {
+    private IReadOnlyCollection<OrderDto> orders = Array.Empty<OrderDto>();
+    private readonly Dictionary<Guid, OrderTrackingDto> trackingByOrder = new();
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.EnsureLoadedAsync();
+        if (Auth.IsSignedIn)
+        {
+            var fresh = (await AccountApi.MeAsync()).OptionalData();
+            if (fresh is not null) await Auth.SignInAsync(fresh);
+            orders = (await AccountApi.OrdersAsync()).RequireUiData();
+            foreach (var order in orders)
+            {
+                var tracking = (await AccountApi.OrderTrackingAsync(order.Id)).OptionalData();
+                if (tracking is not null) trackingByOrder[order.Id] = tracking;
+            }
+        }
+        loading = false;
+    }
+
+    private OrderTrackingDto? GetTracking(Guid orderId)
+        => trackingByOrder.TryGetValue(orderId, out var tracking) ? tracking : null;
+}

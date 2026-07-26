@@ -1,0 +1,96 @@
+<article class="order-card reveal customer-order-card">
+    <div>
+        <b>سفارش @Order.OrderNumber</b>
+        <p class="lead" style="font-size:13px">@Order.CustomerName · @Order.CreatedAt.LocalDateTime.ToString("yyyy/MM/dd · HH:mm")</p>
+    </div>
+    <span class="order-state order-state--@Order.Status.ToLowerInvariant()">@Order.StatusLabel</span>
+
+    @if (Tracking is not null)
+    {
+        <div class="customer-order-progress" aria-label="وضعیت سفارش">
+            <div class="customer-order-progress-head">
+                <div>
+                    <span class="eyebrow">ORDER TRACKING</span>
+                    <h3>پیگیری وضعیت سفارش</h3>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(Tracking.TrackingCode))
+                {
+                    <b class="tracking-code">کد رهگیری: @Tracking.TrackingCode</b>
+                }
+            </div>
+            <div class="customer-timeline">
+                @foreach (var step in Tracking.Timeline.Where(x => ShouldShowStep(x)))
+                {
+                    <div class="customer-timeline-step @(step.IsCompleted ? "is-completed" : "") @(step.IsCurrent ? "is-current" : "")">
+                        <span class="timeline-dot"></span>
+                        <div>
+                            <b>@step.Title</b>
+                            <p>@step.Description</p>
+                            @if (step.HappenedAt.HasValue)
+                            {
+                                <small>@step.HappenedAt.Value.LocalDateTime.ToString("yyyy/MM/dd · HH:mm")</small>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <div style="grid-column:1/-1">
+        @foreach (var line in Order.Lines)
+        {
+            <div class="order-card-line">
+                <img src="@line.ProductImageUrl" alt="@line.ProductName" />
+                <div>
+                    <a href="@($"/product/{line.ProductSlug}")"><b>@line.ProductName</b></a>
+                    <small>@line.ColorName · سایز @line.Size · تعداد @line.Quantity</small>
+                    <span>گلدوزی @line.Embroidery.PlacementLabel · @line.Embroidery.WidthCm × @line.Embroidery.HeightCm سانتی‌متر</span>
+                    <span>@DesignLabel(line.Embroidery) · @line.Embroidery.ScalePercent% · @line.Embroidery.RotationDegrees°</span>
+                </div>
+                <strong>@Currency.Format(line.LineTotal)</strong>
+            </div>
+        }
+        <footer class="order-card-footer"><div><span>پرداخت</span><b>@(Order.PaymentStatus == "Paid" ? "موفق" : Order.PaymentStatus == "Failed" ? "ناموفق" : "در انتظار")</b></div><div><span>ارسال</span><b>@Order.ShippingMethodTitle</b></div><div><span>جمع سفارش</span><strong>@Currency.Format(Order.Total)</strong></div></footer>
+        @if (CanCompletePayment)
+        {
+            <div class="order-payment-callout">
+                <span>موجودی این سفارش تا <b>@Order.ReservationExpiresAt!.Value.LocalDateTime.ToString("HH:mm · yyyy/MM/dd")</b> برای شما نگه داشته می‌شود.</span>
+                <a class="pill-btn" href="@($"/payment/{Order.Id}")">تکمیل پرداخت</a>
+            </div>
+        }
+        else if (Order.PaymentStatus != "Paid" && Order.Status == "PendingPayment")
+        {
+            <div class="order-payment-callout">
+                <span>مهلت رزرو موجودی این سفارش تمام شده است و امکان پرداخت آن وجود ندارد.</span>
+            </div>
+        }
+        @if (!string.IsNullOrWhiteSpace(Order.TrackingCode) || !string.IsNullOrWhiteSpace(Order.AdminNote))
+        {
+            <div class="order-card-note">
+                @if (!string.IsNullOrWhiteSpace(Order.TrackingCode)) { <span>کد رهگیری: <b>@Order.TrackingCode</b></span> }
+                @if (!string.IsNullOrWhiteSpace(Order.AdminNote)) { <p>@Order.AdminNote</p> }
+            </div>
+        }
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public OrderDto Order { get; set; } = default!;
+    [Parameter] public OrderTrackingDto? Tracking { get; set; }
+
+    private bool CanCompletePayment =>
+        Order.PaymentStatus != "Paid" &&
+        Order.Status == "PendingPayment" &&
+        string.Equals(Order.ReservationStatus, "Reserved", StringComparison.OrdinalIgnoreCase) &&
+        Order.ReservationExpiresAt is { } expiresAt &&
+        expiresAt > DateTimeOffset.UtcNow;
+
+    private static bool ShouldShowStep(OrderTimelineItemDto step)
+    {
+        if (step.Status is "Cancelled" or "Refunded") return step.IsCompleted || step.IsCurrent;
+        return true;
+    }
+
+    private static string DesignLabel(EmbroideryConfigurationDto embroidery)=>string.Equals(embroidery.DesignSource,"ReadyMade",StringComparison.OrdinalIgnoreCase)?"محصول آماده گلدوزی‌شده":embroidery.DesignSource switch{"Upload"=>"طرح آپلودی","Text"=>"طرح متنی",_=>embroidery.MotifKey=="sword"?"موتیف شمشیر":embroidery.MotifKey=="cloud"?"موتیف ابر":"موتیف اژدها"};
+}

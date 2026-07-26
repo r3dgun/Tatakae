@@ -1,0 +1,213 @@
+@page "/pages/{Slug}"
+@page "/about"
+@page "/terms"
+@page "/rules"
+@page "/privacy"
+@page "/returns"
+@page "/shipping-policy"
+@page "/contact"
+@inject NavigationManager Navigation
+@inject IStoreApiClient Store
+
+<SeoHead Title="@SeoTitle" Description="@SeoDescription" Path="@CanonicalPath" JsonLd="@LegalJsonLd" Index="@CanIndex" Follow="@CanIndex" />
+
+<section class="ink-legal panel" data-accent="paper">
+    <div class="section-head">
+        <p class="eyebrow">TRUST CENTER / @CurrentSlug</p>
+        <h2>@LegalTitle<br><i>PAGE.</i></h2>
+        <p>@Page.Summary</p>
+    </div>
+
+    <nav class="ink-category-line" aria-label="صفحات اعتماد">
+        <a class="@(CurrentSlug == "about" ? "active" : null)" href="/about">درباره ما</a>
+        <a class="@(CurrentSlug == "terms" ? "active" : null)" href="/rules">قوانین و مقررات</a>
+        <a class="@(CurrentSlug == "privacy" ? "active" : null)" href="/privacy">حریم خصوصی</a>
+        <a class="@(CurrentSlug == "returns" ? "active" : null)" href="/returns">مرجوعی</a>
+        <a class="@(CurrentSlug == "shipping" ? "active" : null)" href="/shipping-policy">روش‌های ارسال</a>
+        <a class="@(CurrentSlug == "contact" ? "active" : null)" href="/contact">ارتباط با ما</a>
+    </nav>
+
+    <article class="ink-legal-card">
+        @if (loading)
+        {
+            <div class="ink-state">در حال دریافت محتوای صفحه...</div>
+        }
+        else
+        {
+            @((MarkupString)PageBodyHtml)
+
+            @if (CurrentSlug == "contact")
+            {
+                <div class="contact-section">
+                    <h2>فرم ارتباط با پشتیبانی</h2>
+                    <p>برای پیگیری سفارش، سؤال درباره گلدوزی یا همکاری سازمانی، فرم زیر را پر کن.</p>
+                    <EditForm Model="contact" OnValidSubmit="SubmitContactAsync">
+                        <RecursiveDataAnnotationsValidator />
+                        <ValidationSummary />
+                        <label>نام و نام خانوادگی
+                            <InputText @bind-Value="contact.FullName" autocomplete="name" maxlength="120" />
+                            <ValidationMessage For="() => contact.FullName" />
+                        </label>
+                        <label>موبایل
+                            <InputText @bind-Value="contact.Mobile" inputmode="tel" autocomplete="tel" maxlength="13" placeholder="09123456789" />
+                            <ValidationMessage For="() => contact.Mobile" />
+                        </label>
+                        <label>ایمیل اختیاری
+                            <InputText type="email" @bind-Value="contact.Email" autocomplete="email" maxlength="260" />
+                            <ValidationMessage For="() => contact.Email" />
+                        </label>
+                        <label>موضوع
+                            <InputText @bind-Value="contact.Subject" maxlength="160" />
+                            <ValidationMessage For="() => contact.Subject" />
+                        </label>
+                        <label>متن پیام
+                            <InputTextArea rows="6" maxlength="2000" @bind-Value="contact.Message" />
+                            <ValidationMessage For="() => contact.Message" />
+                        </label>
+                        <button disabled="@sendingContact">@(sendingContact ? "در حال ارسال..." : "ارسال پیام")</button>
+                    </EditForm>
+                    @if (!string.IsNullOrWhiteSpace(contactMessage))
+                    {
+                        <p><b>@contactMessage</b></p>
+                    }
+                </div>
+            }
+        }
+    </article>
+</section>
+
+@code {
+    [Parameter] public string? Slug { get; set; }
+    private StorePolicyPageDto? apiPage;
+    private bool loading;
+    private bool sendingContact;
+    private string? contactMessage;
+    private SubmitContactMessageRequest contact = new() { Subject = "پیگیری سفارش / سؤال درباره گلدوزی" };
+
+    private string CurrentSlug => ResolveSlug();
+    private PageFallback Fallback => FallbackPage(CurrentSlug);
+    private StorePolicyPageDto Page => apiPage ?? new StorePolicyPageDto(Guid.Empty, CurrentSlug, Fallback.Title, Fallback.Summary, Fallback.Body, Fallback.Title, Fallback.Summary, true, 0, DateTimeOffset.UtcNow);
+    private string SeoTitle => string.IsNullOrWhiteSpace(Page.SeoTitle) ? $"{Page.Title} | Tatakae" : Page.SeoTitle;
+    private string SeoDescription => string.IsNullOrWhiteSpace(Page.SeoDescription) ? Page.Summary : Page.SeoDescription;
+    private bool CanIndex => apiPage?.IsPublished == true;
+    private string CanonicalPath => CurrentSlug switch { "about" => "/about", "terms" => "/rules", "privacy" => "/privacy", "returns" => "/returns", "shipping" => "/shipping-policy", "contact" => "/contact", _ => $"/pages/{CurrentSlug}" };
+    private string LegalTitle => CurrentSlug switch { "about" => "ABOUT", "terms" => "TERMS", "privacy" => "PRIVACY", "returns" => "RETURNS", "shipping" => "SHIPPING", "contact" => "CONTACT", _ => "TRUST" };
+    private string LegalJsonLd => JsonSerializer.Serialize(new Dictionary<string, object?>
+    {
+        ["@context"] = "https://schema.org",
+        ["@graph"] = new object[]
+        {
+            new Dictionary<string, object?>
+            {
+                ["@type"] = CurrentSlug == "contact" ? "ContactPage" : CurrentSlug == "about" ? "AboutPage" : "WebPage",
+                ["name"] = Page.Title,
+                ["description"] = SeoDescription,
+                ["url"] = Navigation.ToAbsoluteUri(CanonicalPath).ToString(),
+                ["dateModified"] = Page.UpdatedAt.ToString("O"),
+                ["inLanguage"] = "fa-IR"
+            },
+            new Dictionary<string, object?>
+            {
+                ["@type"] = "BreadcrumbList",
+                ["itemListElement"] = new object[]
+                {
+                    new Dictionary<string, object?> { ["@type"] = "ListItem", ["position"] = 1, ["name"] = "خانه", ["item"] = Navigation.ToAbsoluteUri("/").ToString() },
+                    new Dictionary<string, object?> { ["@type"] = "ListItem", ["position"] = 2, ["name"] = Page.Title, ["item"] = Navigation.ToAbsoluteUri(CanonicalPath).ToString() }
+                }
+            }
+        }
+    });
+    private string PageBodyHtml => Page.Body.Contains('<') ? Page.Body : string.Join("", Page.Body.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(x => $"<p>{System.Net.WebUtility.HtmlEncode(x.Trim())}</p>"));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loading = true;
+        contactMessage = null;
+        apiPage = (await Store.GetPolicyPageAsync(CurrentSlug)).OptionalData();
+        loading = false;
+    }
+
+    private async Task SubmitContactAsync()
+    {
+        sendingContact = true;
+        contactMessage = null;
+        contact.FullName = contact.FullName.Trim();
+        contact.Mobile = IranianInputNormalizer.NormalizeIranianMobile(contact.Mobile);
+        contact.Email = string.IsNullOrWhiteSpace(contact.Email) ? null : contact.Email.Trim();
+        contact.Subject = contact.Subject.Trim();
+        contact.Message = contact.Message.Trim();
+        var result = await Store.SubmitContactMessageAsync(contact);
+        contactMessage = result.Message;
+        if (result.IsSuccess)
+        {
+            contact = new SubmitContactMessageRequest { Subject = "پیگیری سفارش / سؤال درباره گلدوزی" };
+        }
+        sendingContact = false;
+    }
+
+    private string ResolveSlug()
+    {
+        if (!string.IsNullOrWhiteSpace(Slug)) return NormalizeSlug(Slug);
+        var relative = Navigation.ToBaseRelativePath(Navigation.Uri).Trim('/').ToLowerInvariant();
+        return relative switch
+        {
+            "about" => "about",
+            "terms" => "terms",
+            "rules" => "terms",
+            "privacy" => "privacy",
+            "returns" => "returns",
+            "shipping-policy" => "shipping",
+            "contact" => "contact",
+            _ => "terms"
+        };
+    }
+
+    private static string NormalizeSlug(string slug) => SeoSlug.Normalize(slug) switch
+    {
+        "shipping-policy" => "shipping",
+        "rules" => "terms",
+        var value => value
+    };
+
+    private sealed record PageFallback(string Title, string Summary, string Body);
+
+    private static PageFallback FallbackPage(string slug) => slug switch
+    {
+        "about" => new("درباره Tatakae", "فروشگاه تخصصی پوشاک گلدوزی، سفارش اختصاصی و تولید آنلاین برای بازار ایران.", """
+            <h2>ما چه کاری انجام می‌دهیم؟</h2>
+            <p>Tatakae یک فروشگاه تخصصی برای فروش پوشاک قابل گلدوزی است. مشتری محصول پایه را انتخاب می‌کند، سایز و رنگ را می‌بیند، وارد استودیو می‌شود و متن، فایل یا طرح آماده گلدوزی را تنظیم می‌کند.</p>
+            <h2>تمرکز فروشگاه</h2>
+            <ul><li>پوشاک مناسب گلدوزی: تی‌شرت، هودی، دورس و پولوشرت.</li><li>استودیو سفارشی‌سازی برای متن، فایل و طرح آماده.</li><li>روش‌های ارسال قابل تعریف توسط مدیر و انتخاب توسط مشتری در Checkout.</li><li>پنل مدیریت برای محصول، سفارش، ارسال، فایل، قوانین و دسترسی‌ها.</li></ul>
+            <h2>چرا این ساختار؟</h2>
+            <p>هدف این است که فروشگاه از حالت سفارش دستی در پیام‌رسان خارج شود و کل مسیر خرید، سفارش گلدوزی، پیگیری و مدیریت از داخل سایت انجام شود.</p>
+            """),
+        "privacy" => new("حریم خصوصی", "نحوه نگهداری اطلاعات مشتری، آدرس‌ها، فایل‌های آپلودی و پیام‌های تماس.", """
+            <h2>اطلاعاتی که ذخیره می‌شود</h2><ul><li>نام، موبایل، آدرس، استان، شهر و کدپستی برای پردازش سفارش.</li><li>جزئیات محصول، سایز، رنگ، طرح گلدوزی و فایل‌های آپلودی.</li><li>پیام‌های ارسال‌شده از فرم ارتباط با ما.</li></ul>
+            <h2>استفاده از اطلاعات</h2><p>اطلاعات فقط برای ثبت سفارش، تولید گلدوزی، ارسال، پشتیبانی و بهبود تجربه خرید استفاده می‌شود.</p>
+            """),
+        "returns" => new("شرایط مرجوعی", "قوانین مرجوعی برای پوشاک گلدوزی‌شده و سفارش اختصاصی.", """
+            <h2>مرجوعی کالای سفارشی</h2><p>محصولی که با متن، لوگو یا فایل اختصاصی مشتری گلدوزی شده باشد، فقط در صورت ایراد تولید، مغایرت با سفارش ثبت‌شده یا آسیب‌دیدگی قابل بررسی است.</p>
+            <h2>موارد قابل بررسی</h2><ul><li>اشتباه در سایز یا رنگ نسبت به سفارش ثبت‌شده.</li><li>ایراد واضح در دوخت یا گلدوزی.</li><li>آسیب هنگام تحویل.</li></ul>
+            """),
+        "shipping" => new("روش‌های ارسال", "روش‌های ارسال از پنل مدیریت تعریف می‌شوند و مشتری در Checkout یکی را انتخاب می‌کند.", """
+            <h2>انتخاب روش ارسال</h2><p>در Checkout مشتری فقط روش‌هایی را می‌بیند که مدیر فروشگاه فعال کرده است. هزینه ارسال و زمان تقریبی تحویل همان‌جا نمایش داده می‌شود.</p>
+            <h2>روش‌های قابل تعریف</h2><ul><li>پست پیشتاز</li><li>تیپاکس</li><li>پیک شهری</li><li>تحویل حضوری</li></ul>
+            """),
+        "contact" => new("ارتباط با ما", "فرم تماس، راه‌های ارتباطی و پیگیری سفارش‌های گلدوزی.", """
+            <h2>راه‌های ارتباط با فروشگاه</h2><p>برای پیگیری سفارش، سؤال درباره گلدوزی، سفارش سازمانی یا همکاری، از فرم زیر استفاده کن.</p>
+            <div class="contact-cards"><div class="contact-card"><b>پشتیبانی سفارش</b><span>شماره و پیام‌رسان بعداً در پنل سایت وارد می‌شود.</span></div><div class="contact-card"><b>آدرس فروشگاه</b><span>آدرس واقعی کسب‌وکار از پنل قوانین قابل ویرایش است.</span></div><div class="contact-card"><b>ساعت پاسخ‌گویی</b><span>شنبه تا پنجشنبه، ساعات کاری فروشگاه.</span></div></div>
+            """),
+        _ => new("قوانین و مقررات سایت", "قوانین ثبت سفارش، تولید گلدوزی، ارسال و پشتیبانی فروشگاه.", """
+            <h2>قوانین و مقررات خرید</h2>
+            <p>استفاده از سایت Tatakae و ثبت سفارش به معنی پذیرش قوانین زیر است. این متن برای فروشگاه ایرانی، سفارش آنلاین، محصول قابل گلدوزی و انتخاب روش ارسال توسط مشتری تنظیم شده است.</p>
+            <h2>ثبت سفارش</h2>
+            <ul><li>مشتری قبل از پرداخت یا ثبت نهایی باید محصول، سایز، رنگ، تعداد، آدرس و روش ارسال را بررسی کند.</li><li>قیمت نهایی شامل قیمت محصول، هزینه گلدوزی، تخفیف احتمالی و هزینه ارسال انتخاب‌شده است.</li><li>در صورت ناموجود شدن واریانت، فروشگاه برای تغییر رنگ/سایز یا لغو سفارش با مشتری هماهنگ می‌کند.</li></ul>
+            <h2>سفارش گلدوزی اختصاصی</h2>
+            <ul><li>مسئولیت صحت متن، لوگو، فایل آپلودی و محل گلدوزی با مشتری است.</li><li>اگر فایل کیفیت کافی نداشته باشد، سفارش تا دریافت فایل مناسب در وضعیت انتظار می‌ماند.</li><li>بعد از ورود سفارش به مرحله تولید، لغو سفارش فقط با تأیید مدیر امکان‌پذیر است.</li></ul>
+            <h2>ارسال و تحویل</h2>
+            <ul><li>روش‌های ارسال از پنل مدیریت فروشگاه تعریف می‌شود و مشتری در Checkout یکی را انتخاب می‌کند.</li><li>زمان آماده‌سازی سفارش گلدوزی ممکن است با سفارش عادی متفاوت باشد.</li><li>مسئولیت وارد کردن آدرس، کدپستی و شماره تماس صحیح با مشتری است.</li></ul>
+            <h2>مرجوعی</h2>
+            <p>کالاهای گلدوزی‌شده با متن، لوگو یا طرح اختصاصی فقط در صورت ایراد تولید، مغایرت با سفارش ثبت‌شده یا آسیب در تحویل قابل بررسی هستند.</p>
+            """)
+    };
+}

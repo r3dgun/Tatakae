@@ -1,0 +1,102 @@
+@page "/admin/reviews"
+@layout AdminLayout
+@attribute [Authorize(Policy = PermissionNames.AdminQuestionsView)]
+@inject IAdminApiClient Admin
+
+<PageTitle>نظرات محصولات | Tatakae Admin</PageTitle>
+<section class="admin-page">
+    <div class="admin-head">
+        <div>
+            <p class="admin-kicker">REVIEWS</p>
+            <h1>مدیریت نظرات محصول</h1>
+            <p>نظرهای بعد از خرید را بررسی کن، پاسخ بده و منتشر یا رد کن.</p>
+        </div>
+        <select class="admin-select" @bind="statusFilter" @bind:after="ReloadAsync">
+            <option value="">همه وضعیت‌ها</option>
+            <option value="Pending">در انتظار</option>
+            <option value="Approved">منتشر شده</option>
+            <option value="Rejected">رد شده</option>
+            <option value="Hidden">مخفی</option>
+        </select>
+    </div>
+
+    @if (loading)
+    {
+        <div class="admin-placeholder">در حال دریافت نظرات...</div>
+    }
+    else
+    {
+        <section class="admin-card">
+            <div class="section-title"><h2>نظرات محصول</h2><span>@reviews.Count مورد</span></div>
+            @foreach (var item in reviews)
+            {
+                <article class="admin-question-row review-admin-row">
+                    <div>
+                        <b>@item.ProductName</b>
+                        <p><strong>@Stars(item.Rating)</strong> · @item.Title</p>
+                        <p>@item.Body</p>
+                        <small>@item.CustomerName · @item.CustomerMobile · @(item.IsBuyer ? "خریدار تأییدشده" : "بدون خرید") · @item.CreatedAt.LocalDateTime.ToString("yyyy/MM/dd HH:mm")</small>
+                    </div>
+                    <label class="field-label">پاسخ ادمین
+                        <textarea class="input" maxlength="1200" @bind="item.AdminReply"></textarea>
+                    </label>
+                    <label class="field-label">یادداشت بررسی / دلیل رد
+                        <textarea class="input" maxlength="700" @bind="item.ModerationNote"></textarea>
+                    </label>
+                    @if (validationErrors.TryGetValue(item.Id, out var itemError))
+                    {
+                        <p class="form-error">@itemError</p>
+                    }
+                    <div class="admin-actions">
+                        <span class="admin-badge">@item.StatusLabel</span>
+                        <AuthorizeView Policy="@PermissionNames.AdminQuestionsManage">
+                            <Authorized>
+                                <button class="admin-primary" @onclick='() => Moderate(item, "Approved")'>انتشار</button>
+                                <button class="admin-ghost" @onclick='() => Moderate(item, "Hidden")'>مخفی</button>
+                                <button class="admin-ghost danger" @onclick='() => Moderate(item, "Rejected")'>رد</button>
+                            </Authorized>
+                        </AuthorizeView>
+                    </div>
+                </article>
+            }
+        </section>
+    }
+</section>
+
+@code {
+    private List<AdminProductReviewDto> reviews = [];
+    private string? statusFilter;
+    private bool loading = true;
+    private readonly Dictionary<Guid, string> validationErrors = [];
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        loading = true;
+        reviews = ((await Admin.ReviewsAsync(statusFilter)).RequireUiData()).ToList();
+        loading = false;
+    }
+
+    private async Task Moderate(AdminProductReviewDto item, string status)
+    {
+        var request = new AdminReviewModerationRequest
+        {
+            Status = status,
+            AdminReply = string.IsNullOrWhiteSpace(item.AdminReply) ? null : item.AdminReply.Trim(),
+            ModerationNote = string.IsNullOrWhiteSpace(item.ModerationNote) ? null : item.ModerationNote.Trim()
+        };
+        var errors = ObjectGraphValidator.Validate(request);
+        if (errors.Count > 0)
+        {
+            validationErrors[item.Id] = string.Join(" ", errors.Select(x => x.ErrorMessage).Distinct());
+            return;
+        }
+
+        validationErrors.Remove(item.Id);
+        (await Admin.ModerateReviewAsync(item.Id, request)).RequireUiData();
+        await ReloadAsync();
+    }
+
+    private static string Stars(int rating) => new('★', Math.Clamp(rating, 1, 5));
+}

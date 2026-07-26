@@ -1,0 +1,16 @@
+<div class="embroidery-preview">
+    <img class="embroidery-preview-garment" src="@ProductImageUrl" alt="پیش‌نمایش لباس" />
+    <div class="embroidery-placement placement-@Placement.ToLowerInvariant()">
+        @if (!string.IsNullOrWhiteSpace(ArtworkDataUrl)) { <img src="@ArtworkDataUrl" alt="طرح گلدوزی شما" /> }
+        else if (!string.IsNullOrWhiteSpace(Text)) { <span style="color:@(ThreadColors.FirstOrDefault() ?? "#FFFFFF")">@Text</span> }
+        else { <span class="embroidery-placeholder">طرح گلدوزی</span> }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string ProductImageUrl { get; set; } = string.Empty;
+    [Parameter] public string Placement { get; set; } = "LeftChest";
+    [Parameter] public string? ArtworkDataUrl { get; set; }
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public IReadOnlyCollection<string> ThreadColors { get; set; } = Array.Empty<string>();
+}

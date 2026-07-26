@@ -1,0 +1,126 @@
+@using Microsoft.JSInterop
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject ICartState Cart
+@inject IAuthSessionStore Auth
+@inject IJSRuntime JS
+
+<ResponsiveRouteMarker />
+
+<div class="noise" aria-hidden="true"></div>
+<div class="progress" aria-hidden="true"><span></span></div>
+<div class="cursor" aria-hidden="true"><b>SHIFT</b></div>
+
+<header class="site-header">
+    <NavLink class="brand" href="/" Match="NavLinkMatch.All" aria-label="Tatakae home">
+        <span>TATAKAE</span>
+        <small>WEAR YOUR PANEL</small>
+    </NavLink>
+    <button class="mobile-menu-toggle" type="button" aria-label="باز و بسته کردن منو" aria-expanded="@mobileNavOpen" @onclick="ToggleMobileNav">
+        <span></span><span></span><span></span>
+    </button>
+    <nav class="@MainNavClass" aria-label="main navigation">
+        <NavLink href="/" @onclick="CloseMobileNav">DROPS</NavLink>
+        <NavLink href="/shop" @onclick="CloseMobileNav">SHOP</NavLink>
+        <NavLink href="/category/embroidered-tshirts" @onclick="CloseMobileNav">CATEGORY</NavLink>
+        <NavLink href="/customize/premium-cotton-embroidered-tshirt" @onclick="CloseMobileNav">STUDIO</NavLink>
+        <NavLink href="/about" @onclick="CloseMobileNav">ABOUT</NavLink>
+        <NavLink href="/rules" @onclick="CloseMobileNav">RULES</NavLink>
+        <NavLink href="/admin" @onclick="CloseMobileNav">ADMIN</NavLink>
+        <NavLink href="/account" @onclick="CloseMobileNav">ACCOUNT</NavLink>
+        <NavLink href="/account/wishlist" @onclick="CloseMobileNav">WISHLIST</NavLink>
+        <NavLink href="/account/artworks" @onclick="CloseMobileNav">ARTWORKS</NavLink>
+    </nav>
+    <button class="cart" type="button" @onclick="ToggleCart">CART <em>@Cart.Count</em></button>
+</header>
+
+<main id="top">
+    @Body
+</main>
+
+<footer class="ink-site-footer">
+    <div class="footer-title">TATAKAE</div>
+    <div class="footer-row footer-row--stacked">
+        <p>ORIGINAL EMBROIDERY STREETWEAR / IRAN</p>
+        <div class="footer-links">
+            <a href="#top">BACK TO TOP ↑</a>
+            <a href="/rules">قوانین و مقررات</a>
+            <a href="/privacy">حریم خصوصی</a>
+            <a href="/shipping-policy">ارسال</a>
+            <a href="/contact">ارتباط با ما</a>
+        </div>
+        <div class="footer-social" aria-label="شبکه‌های اجتماعی">
+            <a href="https://instagram.com/tatakae.store" target="_blank" rel="noopener">Instagram</a>
+            <a href="https://t.me/tatakae_store" target="_blank" rel="noopener">Telegram</a>
+            <a href="https://wa.me/989120000000" target="_blank" rel="noopener">WhatsApp</a>
+            <a href="https://www.linkedin.com/company/tatakae" target="_blank" rel="noopener">LinkedIn</a>
+        </div>
+    </div>
+</footer>
+
+<div class="cart-panel-overlay @(cartOpen ? "open" : null)" @onclick="ToggleCart"></div>
+<aside class="cart-drawer @(cartOpen ? "open" : null)">
+    <div class="drawer-head">
+        <div><p class="eyebrow">SHOPPING CART</p><h3>سبد خرید</h3></div>
+        <button class="close-x" @onclick="ToggleCart">✕</button>
+    </div>
+    <div class="cart-lines">
+        @if (Cart.Items.Count == 0)
+        {
+            <div class="cart-empty"><b>سبد خرید خالی است</b><p>یک لباس انتخاب کن و از استودیو گلدوزی سفارشی‌اش کن.</p><a href="/shop" @onclick="CloseCart">مشاهده فروشگاه</a></div>
+        }
+        @foreach (var item in Cart.Items)
+        {
+            <div class="cart-line">
+                <div class="cart-thumb"><img src="@item.ProductImageUrl" alt="@item.ProductName" /></div>
+                <div>
+                    <h4>@item.ProductName</h4>
+                    <p>@item.ColorName · سایز @item.Size · تعداد @item.Quantity</p>
+                    @if (item.IsReadyMade)
+                    {
+                        <p>محصول آماده گلدوزی‌شده · بدون استودیو</p>
+                    }
+                    else
+                    {
+                        <p>گلدوزی @item.Embroidery.Placement · @item.Embroidery.WidthCm × @item.Embroidery.HeightCm cm</p>
+                    }
+                    <strong>@Currency.Format(item.LineTotal)</strong>
+                    <div class="cart-qty">
+                        <button @onclick="() => Cart.Decrement(item.Key)">−</button>
+                        <span>@item.Quantity</span>
+                        <button @onclick="() => Cart.Increment(item.Key)">+</button>
+                        <button class="remove" @onclick="() => Cart.Remove(item.Key)">حذف</button>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+    <div class="drawer-foot">
+        <div class="summary-row total"><span>جمع موقت</span><b>@Currency.Format(Cart.Subtotal)</b></div>
+        <a class="@(Cart.Count == 0 ? "disabled" : null)" href="/checkout" @onclick="CloseCart">ادامه و ثبت سفارش</a>
+    </div>
+</aside>
+
+@code {
+    private bool cartOpen;
+    private bool mobileNavOpen;
+    private string MainNavClass => mobileNavOpen ? "main-nav open" : "main-nav";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Cart.Changed += Refresh;
+        Auth.Changed += Refresh;
+        await Auth.EnsureLoadedAsync();
+        await Cart.EnsureLoadedAsync(Auth.Current);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+        => await JS.InvokeVoidAsync("tatakaeInk.init");
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+    private void ToggleCart() { cartOpen = !cartOpen; mobileNavOpen = false; }
+    private void CloseCart() => cartOpen = false;
+    private void ToggleMobileNav() { mobileNavOpen = !mobileNavOpen; cartOpen = false; }
+    private void CloseMobileNav() => mobileNavOpen = false;
+    public void Dispose() { Cart.Changed -= Refresh; Auth.Changed -= Refresh; }
+}

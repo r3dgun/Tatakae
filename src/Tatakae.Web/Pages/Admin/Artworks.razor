@@ -1,0 +1,149 @@
+@page "/admin/artworks"
+@layout AdminLayout
+@attribute [Authorize(Policy = PermissionNames.AdminMediaView)]
+@using Tatakae.Application.Contracts.Embroidery
+@inject IAdminApiClient Admin
+
+<h1>بررسی طرح‌های گلدوزی</h1>
+<p class="admin-muted">طرح‌های آپلودشده مشتری‌ها قبل از تولید اینجا بررسی و تأیید می‌شوند.</p>
+
+<div class="admin-toolbar">
+    <select @bind="status">
+        <option value="">همه وضعیت‌ها</option>
+        <option value="PendingReview">در انتظار بررسی</option>
+        <option value="Approved">تأیید شده</option>
+        <option value="NeedsRevision">نیازمند اصلاح</option>
+        <option value="Rejected">رد شده</option>
+        <option value="Archived">آرشیو شده</option>
+    </select>
+    <button @onclick="Load">فیلتر</button>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(message)) { <p class="form-message">@message</p> }
+@if (!string.IsNullOrWhiteSpace(error)) { <p class="form-error">@error</p> }
+
+@if (loading)
+{
+    <div class="loading-state">در حال دریافت طرح‌ها...</div>
+}
+else if (items.Count == 0)
+{
+    <div class="empty-state">طرحی برای نمایش وجود ندارد.</div>
+}
+else
+{
+    <div class="admin-artwork-list">
+        @foreach (var item in items)
+        {
+            var moderation = moderations[item.Id];
+            <article class="admin-card artwork-review-card">
+                <div class="artwork-card-main">
+                    @if (item.ContentType.StartsWith("image/"))
+                    {
+                        <img src="@item.FileUrl" alt="@item.OriginalFileName" />
+                    }
+                    else
+                    {
+                        <div class="admin-file-icon">@FileLabel(item)</div>
+                    }
+                    <div>
+                        <span class="eyebrow">@item.StatusLabel</span>
+                        <h3>@item.OriginalFileName</h3>
+                        <p>@(item.SizeBytes / 1024) KB · @item.WidthCm × @item.HeightCm cm · @item.ThreadColorCount رنگ</p>
+                        <p>@item.CustomerNote</p>
+                        <a class="text-link" href="@item.FileUrl" target="_blank">مشاهده فایل اصلی</a>
+                    </div>
+                </div>
+                <EditForm Model="moderation" OnValidSubmit="() => Moderate(item.Id)">
+                    <RecursiveDataAnnotationsValidator />
+                    <ValidationSummary />
+                    <div class="admin-form-grid two">
+                        <label>وضعیت
+                            <InputSelect @bind-Value="moderation.Status">
+                                <option value="Approved">تأیید شده</option>
+                                <option value="NeedsRevision">نیازمند اصلاح</option>
+                                <option value="Rejected">رد شده</option>
+                                <option value="Archived">آرشیو شده</option>
+                                <option value="PendingReview">در انتظار بررسی</option>
+                            </InputSelect>
+                            <ValidationMessage For="() => moderation.Status" />
+                        </label>
+                        <label>فرمت تولید
+                            <InputText maxlength="20" @bind-Value="moderation.ProductionFileExtension" placeholder="DST یا PES" />
+                            <ValidationMessage For="() => moderation.ProductionFileExtension" />
+                        </label>
+                        <label>لینک پیش‌نمایش
+                            <InputText type="url" maxlength="1200" @bind-Value="moderation.PreviewImageUrl" />
+                            <ValidationMessage For="() => moderation.PreviewImageUrl" />
+                        </label>
+                        <label>دلیل رد/اصلاح
+                            <InputTextArea rows="3" maxlength="1200" @bind-Value="moderation.RejectionReason" />
+                            <ValidationMessage For="() => moderation.RejectionReason" />
+                        </label>
+                        <label class="wide">یادداشت ادمین
+                            <InputTextArea rows="3" maxlength="1200" @bind-Value="moderation.AdminNote" />
+                            <ValidationMessage For="() => moderation.AdminNote" />
+                        </label>
+                    </div>
+                    <button type="submit" class="pill-btn">ثبت بررسی</button>
+                </EditForm>
+            </article>
+        }
+    </div>
+}
+
+@code {
+    private IReadOnlyCollection<EmbroideryArtworkDto> items = Array.Empty<EmbroideryArtworkDto>();
+    private readonly Dictionary<Guid, AdminArtworkModerationRequest> moderations = new();
+    private string? status;
+    private string? message;
+    private string? error;
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true; error = null;
+        try
+        {
+            items = (await Admin.AdminArtworksAsync(status)).RequireUiData();
+            foreach (var item in items)
+            {
+                if (!moderations.ContainsKey(item.Id))
+                {
+                    moderations[item.Id] = new AdminArtworkModerationRequest
+                    {
+                        Status = item.Status == "PendingReview" ? "Approved" : item.Status,
+                        AdminNote = item.AdminNote,
+                        RejectionReason = item.RejectionReason,
+                        PreviewImageUrl = item.PreviewImageUrl,
+                        ProductionFileExtension = item.ProductionFileExtension
+                    };
+                }
+            }
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { loading = false; }
+    }
+
+    private async Task Moderate(Guid id)
+    {
+        message = null; error = null;
+        try
+        {
+            (await Admin.ModerateArtworkAsync(id, moderations[id])).RequireUiData();
+            message = "وضعیت طرح ثبت شد.";
+            await Load();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private static string FileLabel(EmbroideryArtworkDto item) => System.IO.Path.GetExtension(item.OriginalFileName).Trim('.').ToUpperInvariant() switch
+    {
+        "DST" => "DST",
+        "PES" => "PES",
+        "PDF" => "PDF",
+        _ => "FILE"
+    };
+}

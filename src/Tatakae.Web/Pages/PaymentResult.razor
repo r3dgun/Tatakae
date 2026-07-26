@@ -1,0 +1,164 @@
+@page "/payment-result"
+@using Microsoft.AspNetCore.Components
+@using Tatakae.Application.Contracts.Payments
+@inject IAuthSessionStore Auth
+@inject IPaymentApiClient Payments
+@inject ICartApiClient ServerCart
+@inject ICartState Cart
+
+<SeoHead Title="نتیجه پرداخت | Tatakae" Description="نتیجه بازگشت از درگاه پرداخت زرین‌پال." Path="/payment-result" Index="false" Follow="false" />
+
+<section class="section payment-page">
+    <div class="wrap">
+        <div class="payment-shell">
+            <article class="payment-card">
+                @if (checking)
+                {
+                    <span class="eyebrow">verifying payment</span>
+                    <h1>در حال بررسی نتیجه پرداخت</h1>
+                    <p>وضعیت پرداخت مستقیماً از سرور فروشگاه دریافت می‌شود.</p>
+                }
+                else if (IsSuccess)
+                {
+                    <span class="eyebrow">payment verified</span>
+                    <h1>پرداخت با موفقیت تأیید شد</h1>
+                    <p>@DisplayMessage</p>
+                    @if (OrderId is { } orderId)
+                    {
+                        <a class="pill-btn" href="@($"/order-success/{orderId}")">مشاهده رسید سفارش</a>
+                    }
+                }
+                else if (IsRefunded)
+                {
+                    <span class="eyebrow">payment refunded</span>
+                    <h1>وجه پرداخت بازگردانده شده است</h1>
+                    <p>@DisplayMessage</p>
+                    <a class="pill-btn" href="/account/orders">مشاهده سفارش‌ها</a>
+                }
+                else if (IsCancelled)
+                {
+                    <span class="eyebrow">payment cancelled</span>
+                    <h1>پرداخت تکمیل نشد</h1>
+                    <p>@DisplayMessage</p>
+                    @if (OrderId is { } orderId)
+                    {
+                        <a class="pill-btn" href="@($"/payment/{orderId}")">تلاش دوباره</a>
+                    }
+                }
+                else
+                {
+                    <span class="eyebrow">payment failed</span>
+                    <h1>تأیید پرداخت ناموفق بود</h1>
+                    <p>@DisplayMessage</p>
+                    <small>کد خطا: @(string.IsNullOrWhiteSpace(resolvedErrorCode) ? "payment_failed" : resolvedErrorCode)</small>
+                    <div class="hero-actions">
+                        <a class="btn-primary" href="/account/orders">بررسی سفارش‌های من</a>
+                        <a class="btn-secondary" href="/contact">ارتباط با پشتیبانی</a>
+                    </div>
+                }
+            </article>
+        </div>
+    </div>
+</section>
+
+@code {
+    [SupplyParameterFromQuery(Name = "orderId")] public Guid? OrderId { get; set; }
+    [SupplyParameterFromQuery(Name = "paymentId")] public Guid? PaymentId { get; set; }
+
+    private bool checking = true;
+    private string resolvedStatus = "failed";
+    private string? resolvedMessage;
+    private string? resolvedErrorCode;
+
+    private bool IsSuccess => string.Equals(resolvedStatus, "success", StringComparison.OrdinalIgnoreCase);
+    private bool IsRefunded => string.Equals(resolvedStatus, "refunded", StringComparison.OrdinalIgnoreCase);
+    private bool IsCancelled => string.Equals(resolvedStatus, "cancelled", StringComparison.OrdinalIgnoreCase);
+    private string DisplayMessage => string.IsNullOrWhiteSpace(resolvedMessage)
+        ? IsSuccess
+            ? "پرداخت توسط زرین‌پال و سرور فروشگاه تأیید شد."
+            : IsRefunded
+                ? "وجه این پرداخت از طریق زرین‌پال بازگردانده شده است."
+                : "پرداخت تکمیل نشد."
+        : resolvedMessage;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        checking = true;
+        resolvedStatus = "failed";
+        resolvedMessage = null;
+        resolvedErrorCode = null;
+
+        try
+        {
+            await Auth.EnsureLoadedAsync();
+
+            if (!Auth.IsSignedIn)
+            {
+                resolvedMessage = "برای مشاهده نتیجه قطعی پرداخت، دوباره وارد حساب کاربری شوید.";
+                resolvedErrorCode = "payment_result_login_required";
+                return;
+            }
+
+            if (OrderId is not { } orderId || orderId == Guid.Empty)
+            {
+                resolvedMessage = "شناسه سفارش در پاسخ پرداخت موجود نیست.";
+                resolvedErrorCode = "payment_result_order_missing";
+                return;
+            }
+
+            var paymentResult = await Payments.GetForOrderAsync(orderId);
+            if (!paymentResult.IsSuccess || paymentResult.Data is null)
+            {
+                resolvedMessage = paymentResult.Message;
+                resolvedErrorCode = paymentResult.ErrorCode ?? "payment_result_not_available";
+                return;
+            }
+
+            var payment = paymentResult.Data;
+            if (PaymentId is { } expectedPaymentId &&
+                expectedPaymentId != Guid.Empty &&
+                payment.Id != expectedPaymentId)
+            {
+                resolvedMessage = "شناسه پرداخت با آخرین پرداخت سفارش مطابقت ندارد.";
+                resolvedErrorCode = "payment_result_id_mismatch";
+                return;
+            }
+
+            resolvedStatus = payment.Status switch
+            {
+                "Verified" or "Succeeded" => "success",
+                "Refunded" or "Reversed" => "refunded",
+                "CancelledByUser" => "cancelled",
+                _ => "failed"
+            };
+
+            resolvedMessage = payment.GatewayMessage;
+            resolvedErrorCode = resolvedStatus is "success" or "refunded"
+                ? null
+                : $"payment_{payment.Status.ToLowerInvariant()}";
+
+            if (IsSuccess)
+            {
+                try
+                {
+                    (await ServerCart.ClearAsync()).EnsureUiSuccess();
+                    Cart.Clear();
+                }
+                catch
+                {
+                    // پاک‌سازی سبد نباید نتیجه پرداخت تأییدشده را تغییر دهد.
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            resolvedStatus = "failed";
+            resolvedMessage = ex.Message;
+            resolvedErrorCode = "payment_result_check_failed";
+        }
+        finally
+        {
+            checking = false;
+        }
+    }
+}

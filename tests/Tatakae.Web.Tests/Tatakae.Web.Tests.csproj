@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Tatakae.Web\Tatakae.Web.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\src\Tatakae.Web\wwwroot\css\phase13-responsive.css" Link="Fixtures\phase13-responsive.css" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Tatakae.Web\wwwroot\js\phase13-responsive.js" Link="Fixtures\phase13-responsive.js" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Tatakae.Web\wwwroot\index.html" Link="Fixtures\index.html" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Tatakae.Web\Layout\MainLayout.razor" Link="Fixtures\MainLayout.razor" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Tatakae.Web\Layout\AdminLayout.razor" Link="Fixtures\AdminLayout.razor" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Tatakae.Web\Pages\Shop.razor" Link="Fixtures\Shop.razor" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Tatakae.Web\Pages\Category.razor" Link="Fixtures\Category.razor" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Tatakae.Web\wwwroot\css\validation.css" Link="Fixtures\validation.css" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Tatakae.Web\Shared\RecursiveDataAnnotationsValidator.cs" Link="Fixtures\RecursiveDataAnnotationsValidator.cs" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Tatakae.Web\Pages\Checkout.razor" Link="Fixtures\Checkout.razor" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Tatakae.Web\Pages\ProductDetail.razor" Link="Fixtures\ProductDetail.razor" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Tatakae.Web\Pages\Account\Login.razor" Link="Fixtures\Login.razor" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Tatakae.Web\Pages\Admin\ProductEditor.razor" Link="Fixtures\ProductEditor.razor" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Tatakae.Web\Pages\Admin\Legal.razor" Link="Fixtures\AdminLegal.razor" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\src\Tatakae.Web\**\*.razor" Link="ArchitectureFixtures\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Tatakae.Web\Program.cs" Link="ArchitectureFixtures\Program.cs" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

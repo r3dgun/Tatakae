@@ -1,0 +1,1 @@
+The UI structure in this codebase was reconstructed from a user-provided prototype. The external Unsplash image URLs remain placeholders and should be replaced with licensed production assets before publication.

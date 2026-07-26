@@ -1,0 +1,45 @@
+<article class="ink-product-card" data-theme="@Theme">
+    <a class="product-image" href="@ProductUrl" aria-label="مشاهده @Product.Name">
+        <img src="@ImageUrl" alt="@ImageAlt" loading="lazy" onerror="this.onerror=null;this.src='@FallbackImage';" />
+        <span class="quick-view">@(Product.SupportsEmbroidery ? "STUDIO READY" : "READY MADE") / @ActionNumber</span>
+    </a>
+    <div class="ink-product-meta">
+        <span>
+            <h3>@Product.Name</h3>
+            <small>@Product.CategoryName · @(Product.IsInStock ? "موجود" : "ناموجود") · @(Product.SupportsEmbroidery ? "قابل شخصی‌سازی" : "آماده گلدوزی‌شده")</small>
+        </span>
+        <b>@Currency.Format(Product.StartingPrice)</b>
+    </div>
+    <div class="ink-product-actions">
+        @if (Product.SupportsEmbroidery)
+        {
+            <a href="@CustomizeUrl">استودیو گلدوزی</a>
+        }
+        else
+        {
+            <a href="@ProductUrl">خرید آماده</a>
+        }
+        <a href="@ProductUrl">جزئیات محصول</a>
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public ProductCardDto Product { get; set; } = default!;
+    private string ProductUrl => $"/product/{Product.Slug}";
+    private string CustomizeUrl => $"/customize/{Product.Slug}";
+    private string Theme => Product.CategorySlug.Contains("hood", StringComparison.OrdinalIgnoreCase) ? "void" : Product.CategorySlug.Contains("sweat", StringComparison.OrdinalIgnoreCase) ? "signal" : Product.CategorySlug.Contains("polo", StringComparison.OrdinalIgnoreCase) ? "paper" : "vermilion";
+    private string ActionNumber => Product.CategorySlug.Contains("hood", StringComparison.OrdinalIgnoreCase) ? "02" : Product.CategorySlug.Contains("polo", StringComparison.OrdinalIgnoreCase) ? "03" : "01";
+    private string ImageUrl => InkImageFor(Product.Slug, Product.PrimaryImageUrl);
+    private string ImageAlt => string.IsNullOrWhiteSpace(Product.PrimaryImageAlt) ? Product.Name : Product.PrimaryImageAlt;
+    private string FallbackImage => Theme switch { "void" => "/ink/assets/fallback-black.svg", "paper" => "/ink/assets/fallback-white.svg", "signal" => "/ink/assets/fallback-neon.svg", _ => "/ink/assets/fallback-red.svg" };
+
+    private static string InkImageFor(string slug, string current)
+    {
+        if (!string.IsNullOrWhiteSpace(current) && current.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return current;
+        if (slug.Contains("hood", StringComparison.OrdinalIgnoreCase)) return "https://i.pinimg.com/736x/8d/83/fc/8d83fcd41cd102d02ebe678de4e8838c.jpg";
+        if (slug.Contains("polo", StringComparison.OrdinalIgnoreCase)) return "https://i.pinimg.com/736x/31/4e/62/314e626f5effb864c7303ef2b93b351e.jpg";
+        if (slug.Contains("sweat", StringComparison.OrdinalIgnoreCase) || slug.Contains("crew", StringComparison.OrdinalIgnoreCase)) return "https://i.pinimg.com/736x/04/0b/0d/040b0d190fcd1a10d9691e35ef75235c.jpg";
+        if (slug.Contains("oversize", StringComparison.OrdinalIgnoreCase)) return "https://i.pinimg.com/736x/04/0b/0d/040b0d190fcd1a10d9691e35ef75235c.jpg";
+        return "https://i.pinimg.com/736x/62/53/e3/6253e3aca16a432bbec7b273a970cea5.jpg";
+    }
+}

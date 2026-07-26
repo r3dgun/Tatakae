@@ -1,0 +1,223 @@
+@page "/admin"
+@layout AdminLayout
+@attribute [Authorize(Policy = PermissionNames.AdminDashboardView)]
+@inject IAdminApiClient Admin
+
+<PageTitle>داشبورد مدیریت | Tatakae</PageTitle>
+
+@if (data is null)
+{
+    <div class="admin-placeholder">در حال دریافت داده‌های داشبورد...</div>
+}
+else
+{
+    <section class="admin-page admin-dashboard-v2">
+        <div class="admin-head">
+            <div>
+                <p class="admin-kicker">DASHBOARD</p>
+                <h1>مرکز کنترل فروشگاه</h1>
+                <p>فروش، تولید گلدوزی، موجودی، پرداخت و کارهای فوری در یک صفحه.</p>
+            </div>
+            <div class="admin-actions">
+                <a class="admin-secondary" href="/admin/products/new">+ محصول جدید</a>
+                <a class="admin-primary" href="/admin/orders">مدیریت سفارش‌ها</a>
+            </div>
+        </div>
+
+        <div class="metric-grid dashboard-metrics">
+            <article class="metric metric-hero">
+                <span>فروش کل</span>
+                <strong>@Currency.Format(data.GrossSales)</strong>
+                <small>پرداخت‌های موفق</small>
+            </article>
+            <article class="metric">
+                <span>فروش امروز</span>
+                <strong>@Currency.Format(data.TodaySales)</strong>
+                <small>سفارش‌های پرداخت‌شده امروز</small>
+            </article>
+            <article class="metric">
+                <span>فروش ماه جاری</span>
+                <strong>@Currency.Format(data.CurrentMonthSales)</strong>
+                <small>از ابتدای ماه</small>
+            </article>
+            <article class="metric">
+                <span>میانگین سفارش</span>
+                <strong>@Currency.Format(data.AverageOrderValue)</strong>
+                <small>برای سفارش‌های موفق</small>
+            </article>
+            <article class="metric">
+                <span>پرداخت معلق</span>
+                <strong>@data.PendingPaymentCount</strong>
+                <small>@Currency.Format(data.PendingPaymentAmount)</small>
+            </article>
+            <article class="metric">
+                <span>در حال گلدوزی</span>
+                <strong>@data.InEmbroideryOrderCount</strong>
+                <small>سفارش در تولید</small>
+            </article>
+            <article class="metric">
+                <span>طرح در انتظار بررسی</span>
+                <strong>@data.PendingArtworkCount</strong>
+                <small>@data.NeedsRevisionArtworkCount نیازمند اصلاح</small>
+            </article>
+            <article class="metric">
+                <span>هشدار موجودی</span>
+                <strong>@data.LowStockVariantCount</strong>
+                <small>@data.OutOfStockVariantCount ناموجود</small>
+            </article>
+        </div>
+
+        <div class="dashboard-grid">
+            <section class="admin-card dashboard-card-wide">
+                <div class="section-title">
+                    <div>
+                        <h2>خط تولید سفارش</h2>
+                        <p>تعداد سفارش‌ها در هر مرحله کاری.</p>
+                    </div>
+                    <a class="admin-link" href="/admin/orders">مشاهده سفارش‌ها</a>
+                </div>
+                <div class="pipeline-list">
+                    @foreach (var step in data.OrderPipeline)
+                    {
+                        <a class="pipeline-step" href="/admin/orders">
+                            <span>@step.Label</span>
+                            <strong>@step.Count</strong>
+                            <small>@Currency.Format(step.Amount)</small>
+                            <i style="@($"width:{PipelineWidth(step.Count)}%")"></i>
+                        </a>
+                    }
+                </div>
+            </section>
+
+            <section class="admin-card">
+                <div class="section-title">
+                    <div>
+                        <h2>کارهای فوری</h2>
+                        <p>چیزهایی که بهتر است امروز بررسی شوند.</p>
+                    </div>
+                </div>
+                @if (!data.ActionItems.Any())
+                {
+                    <div class="empty-state compact">کار فوری فعلاً وجود ندارد.</div>
+                }
+                else
+                {
+                    <div class="action-list">
+                        @foreach (var item in data.ActionItems)
+                        {
+                            <a class="action-item severity-@item.Severity" href="@item.Link">
+                                <strong>@item.Count</strong>
+                                <div>
+                                    <b>@item.Title</b>
+                                    <small>@item.Description</small>
+                                </div>
+                            </a>
+                        }
+                    </div>
+                }
+            </section>
+        </div>
+
+        <div class="dashboard-grid two-columns">
+            <section class="admin-card">
+                <div class="section-title">
+                    <div>
+                        <h2>پرفروش‌ترین محصولات</h2>
+                        <p>بر اساس سفارش‌های پرداخت‌شده.</p>
+                    </div>
+                    <a class="admin-link" href="/admin/products">محصولات</a>
+                </div>
+                @if (!data.TopProducts.Any())
+                {
+                    <div class="empty-state compact">هنوز فروش موفقی ثبت نشده است.</div>
+                }
+                else
+                {
+                    <div class="top-products">
+                        @foreach (var product in data.TopProducts)
+                        {
+                            <div class="top-product-row">
+                                <div>
+                                    <b>@product.ProductName</b>
+                                    <small>@product.QuantitySold عدد فروخته‌شده</small>
+                                </div>
+                                <strong>@Currency.Format(product.Revenue)</strong>
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
+
+            <section class="admin-card">
+                <div class="section-title">
+                    <div>
+                        <h2>سلامت فروشگاه</h2>
+                        <p>وضعیت کلی کاتالوگ و تعامل مشتری.</p>
+                    </div>
+                </div>
+                <div class="health-grid">
+                    <div><span>محصول منتشرشده</span><strong>@data.PublishedProductCount / @data.ProductCount</strong></div>
+                    <div><span>محصول آماده</span><strong>@data.ReadyMadeProductCount</strong></div>
+                    <div><span>محصول استودیویی</span><strong>@data.StudioProductCount</strong></div>
+                    <div><span>موجودی قابل فروش</span><strong>@data.TotalAvailableStock</strong></div>
+                    <div><span>نظرات در انتظار</span><strong>@data.PendingReviewCount</strong></div>
+                    <div><span>پرسش بی‌پاسخ</span><strong>@data.UnansweredQuestionCount</strong></div>
+                </div>
+            </section>
+        </div>
+
+        <section class="admin-card">
+            <div class="section-title">
+                <div>
+                    <h2>آخرین سفارش‌ها</h2>
+                    <p>آخرین سفارش‌های ثبت‌شده در فروشگاه.</p>
+                </div>
+                <a class="admin-link" href="/admin/orders">مشاهده همه</a>
+            </div>
+            <div class="admin-table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>شماره سفارش</th>
+                            <th>مشتری</th>
+                            <th>وضعیت</th>
+                            <th>مبلغ</th>
+                            <th>زمان</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var order in data.RecentOrders)
+                        {
+                            <tr>
+                                <td><b>@order.OrderNumber</b></td>
+                                <td>@order.CustomerName</td>
+                                <td><span class="status-pill">@order.StatusLabel</span></td>
+                                <td>@Currency.Format(order.Total)</td>
+                                <td>@order.CreatedAt.LocalDateTime.ToString("yyyy/MM/dd HH:mm")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </section>
+}
+
+@code {
+    private AdminDashboardDto? data;
+
+    protected override async Task OnInitializedAsync()
+        => data = (await Admin.DashboardAsync()).RequireUiData();
+
+    private double PipelineWidth(int count)
+    {
+        if (data?.OrderPipeline is null || !data.OrderPipeline.Any())
+            return 0;
+
+        var max = data.OrderPipeline.Max(x => x.Count);
+        if (max == 0 || count == 0)
+            return 0;
+
+        return Math.Max(8, Math.Round((double)count / max * 100, 1));
+    }
+}

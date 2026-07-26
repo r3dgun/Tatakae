@@ -1,0 +1,524 @@
+@page "/admin/products/new"
+@page "/admin/products/{Id:guid}"
+@layout AdminLayout
+@attribute [Authorize(Policy = PermissionNames.AdminProductsManage)]
+@inject IAdminApiClient Admin
+@inject NavigationManager Navigation
+
+<PageTitle>@(Id is null ? "محصول جدید" : "ویرایش محصول") | Tatakae</PageTitle>
+
+<section class="admin-page">
+    <div class="admin-head">
+        <div>
+            <p class="admin-kicker">PRODUCT / SKU / INVENTORY</p>
+            <h1>@(Id is null ? "محصول جدید" : "ویرایش محصول")</h1>
+            <p>تعریف محصول آماده یا استودیویی، SKU، قیمت، تخفیف، موجودی، تصویر و سئو.</p>
+        </div>
+        <a class="admin-secondary" href="/admin/products">بازگشت</a>
+    </div>
+
+    @if (loading)
+    {
+        <div class="admin-placeholder">در حال آماده‌سازی فرم...</div>
+    }
+    else
+    {
+        <EditForm Model="form" OnValidSubmit="Save">
+            <RecursiveDataAnnotationsValidator />
+            <ValidationSummary />
+
+            <div class="editor-grid">
+                <div class="editor-main">
+                    <section class="admin-card editor-section">
+                        <h2>اطلاعات اصلی</h2>
+                        <div class="form-grid">
+                            <label>نام محصول<InputText @bind-Value="form.Name" /></label>
+                            <label>Slug فارسی / انگلیسی
+                                <div class="admin-inline-field">
+                                    <InputText dir="auto" @bind-Value="form.Slug" />
+                                    <button type="button" class="small-button" @onclick="GenerateSlug">ساخت از نام</button>
+                                </div>
+                                <small dir="ltr">/product/@SeoSlug.Normalize(form.Slug)</small>
+                            </label>
+                            <label>دسته‌بندی
+                                <select @bind="form.CategoryId">
+                                    @foreach (var c in categories)
+                                    {
+                                        <option value="@c.Id">@c.Name</option>
+                                    }
+                                </select>
+                            </label>
+                            <label>نوع لباس
+                                <select @bind="form.ApparelCategory">
+                                    <option>TShirt</option>
+                                    <option>Hoodie</option>
+                                    <option>Sweatshirt</option>
+                                    <option>Polo</option>
+                                    <option>Jacket</option>
+                                </select>
+                            </label>
+                            <label>جنس<InputText @bind-Value="form.Material" /></label>
+                            <label>فیت<InputText @bind-Value="form.Fit" /></label>
+                            <label class="checkbox-label"><InputCheckbox @bind-Value="form.IsPublished" /> انتشار</label>
+                            <label class="checkbox-label"><InputCheckbox @bind-Value="form.IsFeatured" /> محصول ویژه</label>
+                            <label class="checkbox-label"><InputCheckbox @bind-Value="form.SupportsEmbroidery" /> قابل شخصی‌سازی در استودیو</label>
+                            <label class="full">راهنمای سایز URL<InputText dir="ltr" @bind-Value="form.SizeGuideUrl" /></label>
+                        </div>
+                        <label>توضیح کوتاه<InputTextArea rows="3" @bind-Value="form.ShortDescription" /></label>
+                        <label>توضیح کامل<InputTextArea rows="6" @bind-Value="form.Description" /></label>
+                        <label>راهنمای نگهداری<InputTextArea rows="4" @bind-Value="form.CareGuide" /></label>
+                        <label>تگ‌ها (با کاما)<InputText @bind-Value="form.TagsCsv" placeholder="مینیمال, پنبه, گلدوزی" /></label>
+                    </section>
+
+                    <section class="admin-card editor-section">
+                        <div class="section-title"><h2>تصاویر محصول</h2><button type="button" class="small-button" @onclick="AddImage">+ تصویر</button></div>
+                        @foreach (var image in form.Images.ToList())
+                        {
+                            <div class="image-admin-row">
+                                <input dir="ltr" placeholder="Image URL" @bind="image.Url" />
+                                <input placeholder="Alt text فارسی" @bind="image.AltText" />
+                                <label class="checkbox-label"><input type="checkbox" @bind="image.IsPrimary" /> اصلی</label>
+                                <button type="button" class="danger" @onclick="() => form.Images.Remove(image)">حذف</button>
+                            </div>
+                        }
+                    </section>
+
+                    <section class="admin-card editor-section sku-friendly-section">
+                        <div class="section-title sku-title-row">
+                            <div>
+                                <h2>تنوع محصول، SKU و موجودی</h2>
+                                <p class="admin-muted">به‌جای جدول خام، هر تنوع به شکل کارت قابل باز و بسته شدن نمایش داده می‌شود. برای محصول آماده، همین SKU مستقیم فروخته می‌شود؛ برای محصول استودیویی، مشتری بعد از انتخاب تنوع وارد استودیو می‌شود.</p>
+                            </div>
+                            <button type="button" class="small-button" @onclick="AddVariant">+ تنوع دستی</button>
+                        </div>
+
+                        <div class="sku-dashboard">
+                            <article>
+                                <span>تعداد تنوع</span>
+                                <strong>@form.Variants.Count</strong>
+                            </article>
+                            <article>
+                                <span>موجودی کل</span>
+                                <strong>@form.Variants.Sum(v => v.StockQuantity)</strong>
+                            </article>
+                            <article>
+                                <span>قابل فروش</span>
+                                <strong>@form.Variants.Sum(v => Math.Max(0, v.StockQuantity - v.ReservedQuantity))</strong>
+                            </article>
+                            <article>
+                                <span>کم‌موجودی</span>
+                                <strong>@form.Variants.Count(v => v.IsActive && Math.Max(0, v.StockQuantity - v.ReservedQuantity) <= v.LowStockThreshold)</strong>
+                            </article>
+                        </div>
+
+                        <div class="sku-builder">
+                            <div class="sku-builder-head">
+                                <div>
+                                    <h3>ساخت سریع تنوع‌ها</h3>
+                                    <p>سایزها و رنگ‌ها را بده؛ سیستم ترکیب سایز × رنگ را خودش می‌سازد.</p>
+                                </div>
+                                <button type="button" class="admin-secondary" @onclick="AddBulkVariants">ساخت ترکیبی</button>
+                            </div>
+                            <div class="sku-builder-grid">
+                                <label class="admin-field"><span>پیشوند SKU</span><input dir="ltr" @bind="bulkSkuPrefix" placeholder="TT-TEE" /></label>
+                                <label class="admin-field"><span>سایزها</span><input dir="ltr" @bind="bulkSizesCsv" placeholder="S,M,L,XL" /></label>
+                                <label class="admin-field wide"><span>رنگ‌ها</span><input @bind="bulkColorsCsv" placeholder="مشکی:#111111, سفید:#F7F3EA" /></label>
+                                <label class="admin-field"><span>قیمت اصلی</span><input type="number" @bind="bulkRegularPrice" /></label>
+                                <label class="admin-field"><span>قیمت تخفیف</span><input type="number" @bind="bulkSalePrice" placeholder="اختیاری" /></label>
+                                <label class="admin-field"><span>موجودی هر تنوع</span><input type="number" @bind="bulkStockQuantity" /></label>
+                                <label class="admin-field"><span>هشدار کم‌موجودی</span><input type="number" @bind="bulkLowStockThreshold" /></label>
+                            </div>
+                            <p class="sku-builder-hint">نمونه رنگ: <code>مشکی:#111111</code>، <code>سفید:#F7F3EA</code>، <code>سبز:#2A9D8F</code></p>
+                        </div>
+
+                        @if (form.Variants.Count == 0)
+                        {
+                            <div class="sku-empty-state">
+                                <strong>هنوز تنوعی ساخته نشده</strong>
+                                <span>برای فروش واقعی، حداقل یک سایز/رنگ بساز. می‌توانی دستی اضافه کنی یا با ساخت سریع همه ترکیب‌ها را بسازی.</span>
+                                <button type="button" class="small-button" @onclick="AddVariant">اولین تنوع را بساز</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="sku-card-list">
+                                @for (var i = 0; i < form.Variants.Count; i++)
+                                {
+                                    var variant = form.Variants[i];
+                                    <details class="sku-variant-card-friendly">
+                                        <summary class="sku-summary">
+                                            <div class="sku-summary-main">
+                                                <span class="sku-color-dot" style="background:@ColorDot(variant.ColorHex)"></span>
+                                                <div>
+                                                    <strong dir="ltr">@(string.IsNullOrWhiteSpace(variant.Sku) ? "SKU-NEW" : variant.Sku)</strong>
+                                                    <small>@variant.ColorName / سایز @variant.Size</small>
+                                                </div>
+                                            </div>
+                                            <div class="sku-summary-stats">
+                                                <span class="status-badge @VariantStatusClass(variant)">@VariantStatusText(variant)</span>
+                                                <span>@Money(EffectivePrice(variant))</span>
+                                                @if (DiscountPercent(variant) > 0)
+                                                {
+                                                    <span class="sku-sale-pill">-@DiscountPercent(variant)%</span>
+                                                }
+                                                <span>@AvailableStock(variant) قابل فروش</span>
+                                            </div>
+                                        </summary>
+
+                                        <div class="sku-card-body-friendly">
+                                            <div class="sku-compact-fields sku-identity-fields">
+                                                <label class="admin-field"><span>کد SKU</span><input dir="ltr" placeholder="TT-BLK-M" @bind="variant.Sku" /></label>
+                                                <label class="admin-field"><span>سایز</span><input dir="ltr" placeholder="M" @bind="variant.Size" /></label>
+                                                <label class="admin-field"><span>نام رنگ</span><input placeholder="مشکی" @bind="variant.ColorName" /></label>
+                                                <label class="admin-field color-input-field"><span>کد رنگ</span><input dir="ltr" placeholder="#111111" @bind="variant.ColorHex" /><i style="background:@ColorDot(variant.ColorHex)"></i></label>
+                                            </div>
+
+                                            <div class="sku-mini-panels">
+                                                <section>
+                                                    <h4>قیمت</h4>
+                                                    <div class="sku-compact-fields two">
+                                                        <label class="admin-field"><span>قیمت اصلی</span><input type="number" placeholder="900000" @bind="variant.RegularPrice" /></label>
+                                                        <label class="admin-field"><span>قیمت تخفیف</span><input type="number" placeholder="اختیاری" @bind="variant.SalePrice" /></label>
+                                                    </div>
+                                                    <p class="sku-inline-note">قیمت نهایی: <b>@Money(EffectivePrice(variant))</b></p>
+                                                </section>
+
+                                                <section>
+                                                    <h4>موجودی</h4>
+                                                    <div class="sku-compact-fields three">
+                                                        <label class="admin-field"><span>کل</span><input type="number" placeholder="5" @bind="variant.StockQuantity" /></label>
+                                                        <label class="admin-field"><span>رزرو</span><input type="number" placeholder="0" @bind="variant.ReservedQuantity" /></label>
+                                                        <label class="admin-field"><span>هشدار</span><input type="number" placeholder="3" @bind="variant.LowStockThreshold" /></label>
+                                                    </div>
+                                                    <p class="sku-inline-note">قابل فروش: <b>@AvailableStock(variant)</b> عدد</p>
+                                                </section>
+                                            </div>
+
+                                            <div class="sku-compact-fields sku-media-fields">
+                                                <label class="admin-field"><span>تصویر مخصوص این تنوع</span><input dir="ltr" placeholder="Variant image URL" @bind="variant.ImageUrl" /></label>
+                                                <label class="admin-field"><span>بارکد</span><input dir="ltr" placeholder="Barcode" @bind="variant.Barcode" /></label>
+                                            </div>
+
+                                            <div class="sku-card-actions-friendly">
+                                                <label class="checkbox-label sku-active-toggle"><input type="checkbox" @bind="variant.IsActive" /> این تنوع فعال و قابل خرید باشد</label>
+                                                <button type="button" class="admin-secondary" @onclick="() => DuplicateVariant(variant)">کپی تنوع</button>
+                                                <button type="button" class="danger sku-delete-button" @onclick="() => form.Variants.Remove(variant)">حذف تنوع</button>
+                                            </div>
+                                        </div>
+                                    </details>
+                                }
+                            </div>
+                        }
+                    </section>
+
+                    <section class="admin-card editor-section">
+                        <div class="section-title"><h2>مشخصات محصول</h2><button type="button" class="small-button" @onclick="AddSpec">+ مشخصه</button></div>
+                        @foreach (var spec in form.Specifications.ToList())
+                        {
+                            <div class="variant-row spec-row">
+                                <label class="admin-field"><span>عنوان مشخصه</span><input placeholder="عنوان" @bind="spec.Name" /></label>
+                                <label class="admin-field"><span>مقدار</span><input placeholder="مقدار" @bind="spec.Value" /></label>
+                                <label class="admin-field"><span>ترتیب</span><input type="number" placeholder="ترتیب" @bind="spec.SortOrder" /></label>
+                                <button type="button" class="danger" @onclick="() => form.Specifications.Remove(spec)">حذف</button>
+                            </div>
+                        }
+                    </section>
+
+                    <section class="admin-card editor-section">
+                        <h2>قوانین گلدوزی</h2>
+                        <p class="admin-muted">اگر محصول آماده است، گزینه «قابل شخصی‌سازی در استودیو» را خاموش کن. این بخش فقط برای محصولات استودیویی استفاده می‌شود.</p>
+                        <div class="form-grid">
+                            <label>هزینه پایه<InputNumber @bind-Value="form.EmbroideryPolicy.BasePrice" /></label>
+                            <label>هزینه هر رنگ اضافه<InputNumber @bind-Value="form.EmbroideryPolicy.PerThreadColorPrice" /></label>
+                            <label>هزینه هر cm²<InputNumber @bind-Value="form.EmbroideryPolicy.PerSquareCentimeterPrice" /></label>
+                            <label>حداکثر رنگ نخ<InputNumber @bind-Value="form.EmbroideryPolicy.MaxThreadColors" /></label>
+                            <label>حداکثر عرض<InputNumber @bind-Value="form.EmbroideryPolicy.MaxWidthCm" /></label>
+                            <label>حداکثر ارتفاع<InputNumber @bind-Value="form.EmbroideryPolicy.MaxHeightCm" /></label>
+                        </div>
+                        <label>محل‌های مجاز (کاما)<InputText @bind-Value="placementsCsv" /></label>
+                        <label>رنگ‌های نخ مجاز (کاما)<InputText @bind-Value="threadColorsCsv" /></label>
+                    </section>
+
+                    <section class="admin-card editor-section">
+                        <div class="section-title"><h2>SEO محصول</h2><span>@form.Seo.MetaTitle.Length/65 · @form.Seo.MetaDescription.Length/160</span></div>
+                        <div class="form-grid">
+                            <label>Meta Title
+                                <InputText @bind-Value="form.Seo.MetaTitle" />
+                                <small>عنوان اختصاصی همین محصول؛ بین ۱۰ تا ۶۵ کاراکتر.</small>
+                            </label>
+                            <label>Meta Description
+                                <InputTextArea rows="3" @bind-Value="form.Seo.MetaDescription" />
+                                <small>خلاصه قابل نمایش در نتیجه جست‌وجو؛ بین ۳۰ تا ۱۶۰ کاراکتر.</small>
+                            </label>
+                            <label class="full">Canonical Path
+                                <div class="admin-inline-field">
+                                    <InputText dir="auto" @bind-Value="form.Seo.CanonicalPath" placeholder="/product/product-slug" />
+                                    <button type="button" class="small-button" @onclick="UseDefaultCanonical">مسیر اصلی</button>
+                                </div>
+                            </label>
+                            <label class="full">OpenGraph Image URL<InputText dir="ltr" @bind-Value="form.Seo.OpenGraphImageUrl" /></label>
+                            <label class="checkbox-label"><InputCheckbox @bind-Value="form.Seo.AllowIndex" /> اجازه ایندکس</label>
+                            <label class="checkbox-label"><InputCheckbox @bind-Value="form.Seo.AllowFollow" /> دنبال‌کردن لینک‌ها</label>
+                        </div>
+                        <div class="seo-snippet-preview">
+                            <small>@CanonicalPreview</small>
+                            <strong>@form.Seo.MetaTitle</strong>
+                            <p>@form.Seo.MetaDescription</p>
+                        </div>
+                    </section>
+
+                    @if (!string.IsNullOrWhiteSpace(message))
+                    {
+                        <p class="form-message">@message</p>
+                    }
+                    <button class="admin-primary" disabled="@saving">@(saving ? "در حال ذخیره..." : "ذخیره محصول")</button>
+                </div>
+
+                <aside>
+                    <section class="admin-card">
+                        <h2>کنترل کیفیت</h2>
+                        <ul class="admin-check">
+                            <li>هر محصول حداقل یک تصویر و یک SKU داشته باشد</li>
+                            <li>SKU تکراری نباشد</li>
+                            <li>قیمت تخفیف از قیمت اصلی کمتر باشد</li>
+                            <li>رزرو شده از موجودی کل بیشتر نباشد</li>
+                            <li>محصول آماده نباید وارد استودیو شود</li>
+                        </ul>
+                    </section>
+                </aside>
+            </div>
+        </EditForm>
+    }
+</section>
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+    private AdminProductRequest form = new();
+    private IReadOnlyCollection<CategoryDto> categories = Array.Empty<CategoryDto>();
+    private bool loading = true, saving;
+    private string? message;
+    private string placementsCsv = "LeftChest,CenterChest,BackNeck,LeftSleeve";
+    private string threadColorsCsv = "#FFFFFF,#111111,#E63946,#F4A261,#2A9D8F,#457B9D";
+    private string bulkSkuPrefix = "TT";
+    private string bulkSizesCsv = "S,M,L,XL";
+    private string bulkColorsCsv = "مشکی:#111111, سفید:#F7F3EA";
+    private decimal bulkRegularPrice = 900000m;
+    private decimal? bulkSalePrice;
+    private int bulkStockQuantity = 3;
+    private int bulkLowStockThreshold = 2;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loading = true;
+        categories = (await Admin.CategoriesAsync()).RequireUiData();
+        if (Id is not null)
+        {
+            var item = (await Admin.ProductAsync(Id.Value)).RequireUiData();
+            if (item is not null) Load(item);
+        }
+        else Initialize();
+        loading = false;
+    }
+
+    private void Initialize()
+    {
+        form = new AdminProductRequest
+        {
+            CategoryId = categories.FirstOrDefault()?.Id ?? Guid.Empty,
+            Name = "",
+            Slug = "",
+            ShortDescription = "",
+            Description = "",
+            Material = "۱۰۰٪ پنبه",
+            Fit = "Regular Fit",
+            CareGuide = "شست‌وشو با آب سرد و پشت‌ورو.",
+            SizeGuideUrl = "https://example.com/size-guide.pdf",
+            TagsCsv = "گلدوزی, لباس",
+            Seo = new SeoInput { MetaTitle = "محصول گلدوزی | Tatakae", MetaDescription = "لباس حرفه‌ای با امکان گلدوزی سفارشی." },
+            Images = [new AdminProductImageRequest { Url = "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=900&h=1100&fit=crop", AltText = "تصویر محصول گلدوزی", IsPrimary = true }],
+            Variants = [new AdminProductVariantRequest { Sku = "TT-NEW-BLK-M", Size = "M", ColorName = "مشکی", ColorHex = "#111111", RegularPrice = 900000m, StockQuantity = 5, LowStockThreshold = 3 }],
+            Specifications = [new AdminProductSpecificationRequest { Name = "نوع محصول", Value = "قابل شخصی‌سازی", SortOrder = 1 }]
+        };
+    }
+
+    private void Load(ProductDetailDto x)
+    {
+        form = new AdminProductRequest
+        {
+            Name = x.Name,
+            Slug = x.Slug,
+            CategoryId = categories.FirstOrDefault(c => c.Slug == x.CategorySlug)?.Id ?? Guid.Empty,
+            ApparelCategory = x.ApparelCategory,
+            ShortDescription = x.ShortDescription,
+            Description = x.Description,
+            Material = x.Material,
+            Fit = x.Fit,
+            CareGuide = x.CareGuide,
+            SizeGuideUrl = x.SizeGuideUrl,
+            IsPublished = true,
+            IsFeatured = x.IsFeatured,
+            SupportsEmbroidery = x.SupportsEmbroidery,
+            TagsCsv = string.Join(',', x.Tags),
+            Seo = new SeoInput { MetaTitle = x.Seo.MetaTitle, MetaDescription = x.Seo.MetaDescription, CanonicalPath = x.Seo.CanonicalPath, OpenGraphImageUrl = x.Seo.OpenGraphImageUrl, AllowIndex = x.Seo.AllowIndex, AllowFollow = x.Seo.AllowFollow },
+            Images = x.Images.Select(i => new AdminProductImageRequest { Url = i.Url, AltText = i.AltText, IsPrimary = i.IsPrimary, SortOrder = i.SortOrder }).ToList(),
+            Variants = x.Variants.Select(v => new AdminProductVariantRequest { Sku = v.Sku, Size = v.Size, ColorName = v.ColorName, ColorHex = v.ColorHex, RegularPrice = v.RegularPrice, SalePrice = v.SalePrice, StockQuantity = v.StockQuantity, ReservedQuantity = v.ReservedQuantity, LowStockThreshold = v.LowStockThreshold, ImageUrl = v.ImageUrl, Barcode = v.Barcode, IsActive = v.IsActive }).ToList(),
+            Specifications = x.Specifications.Select(s => new AdminProductSpecificationRequest { Name = s.Name, Value = s.Value, SortOrder = s.SortOrder }).ToList(),
+            EmbroideryPolicy = new EmbroideryPolicyInput { BasePrice = x.EmbroideryPolicy.BasePrice, PerThreadColorPrice = x.EmbroideryPolicy.PerThreadColorPrice, PerSquareCentimeterPrice = x.EmbroideryPolicy.PerSquareCentimeterPrice, MaxThreadColors = x.EmbroideryPolicy.MaxThreadColors, MaxWidthCm = x.EmbroideryPolicy.MaxWidthCm, MaxHeightCm = x.EmbroideryPolicy.MaxHeightCm, AllowedPlacements = x.EmbroideryPolicy.AllowedPlacements.ToList(), AllowedThreadColors = x.EmbroideryPolicy.AllowedThreadColors.ToList() }
+        };
+        placementsCsv = string.Join(',', form.EmbroideryPolicy.AllowedPlacements);
+        threadColorsCsv = string.Join(',', form.EmbroideryPolicy.AllowedThreadColors);
+    }
+
+    private string CanonicalPreview => string.IsNullOrWhiteSpace(form.Seo.CanonicalPath) ? $"/product/{SeoSlug.Normalize(form.Slug)}" : SeoSlug.NormalizeCanonicalPath(form.Seo.CanonicalPath, $"/product/{SeoSlug.Normalize(form.Slug)}");
+
+    private void GenerateSlug()
+    {
+        form.Slug = SeoSlug.Normalize(string.IsNullOrWhiteSpace(form.Name) ? form.Slug : form.Name);
+        if (string.IsNullOrWhiteSpace(form.Seo.CanonicalPath)) UseDefaultCanonical();
+    }
+
+    private void UseDefaultCanonical() => form.Seo.CanonicalPath = $"/product/{SeoSlug.Normalize(form.Slug)}";
+
+    private void AddImage() => form.Images.Add(new AdminProductImageRequest { AltText = form.Name + " - تصویر جدید" });
+
+    private void AddVariant()
+    {
+        var prefix = NormalizeSkuPart(string.IsNullOrWhiteSpace(bulkSkuPrefix) ? form.Slug : bulkSkuPrefix);
+        form.Variants.Insert(0, new AdminProductVariantRequest
+        {
+            Sku = MakeUniqueSku($"{prefix}-BLK-M"),
+            Size = "M",
+            ColorName = "مشکی",
+            ColorHex = "#111111",
+            RegularPrice = bulkRegularPrice > 0 ? bulkRegularPrice : 900000m,
+            SalePrice = bulkSalePrice,
+            StockQuantity = bulkStockQuantity > 0 ? bulkStockQuantity : 1,
+            LowStockThreshold = bulkLowStockThreshold > 0 ? bulkLowStockThreshold : 2,
+            IsActive = true
+        });
+    }
+
+    private void AddBulkVariants()
+    {
+        var prefix = NormalizeSkuPart(string.IsNullOrWhiteSpace(bulkSkuPrefix) ? form.Slug : bulkSkuPrefix);
+        var sizes = bulkSizesCsv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var colors = ParseBulkColors().ToList();
+
+        if (sizes.Count == 0) sizes.Add("M");
+        if (colors.Count == 0) colors.Add(("مشکی", "#111111"));
+
+        foreach (var color in colors)
+        {
+            foreach (var size in sizes)
+            {
+                if (form.Variants.Any(v => v.Size.Equals(size, StringComparison.OrdinalIgnoreCase) && v.ColorHex.Equals(color.Hex, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                var colorCode = color.Hex.TrimStart('#');
+                form.Variants.Add(new AdminProductVariantRequest
+                {
+                    Sku = MakeUniqueSku($"{prefix}-{NormalizeSkuPart(size)}-{NormalizeSkuPart(colorCode)}"),
+                    Size = size,
+                    ColorName = color.Name,
+                    ColorHex = color.Hex,
+                    RegularPrice = bulkRegularPrice > 0 ? bulkRegularPrice : 900000m,
+                    SalePrice = bulkSalePrice,
+                    StockQuantity = Math.Max(0, bulkStockQuantity),
+                    ReservedQuantity = 0,
+                    LowStockThreshold = Math.Max(0, bulkLowStockThreshold),
+                    IsActive = true
+                });
+            }
+        }
+    }
+
+    private IEnumerable<(string Name, string Hex)> ParseBulkColors()
+    {
+        foreach (var raw in bulkColorsCsv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var parts = raw.Split(':', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            var name = parts.ElementAtOrDefault(0) ?? "رنگ";
+            var hex = parts.ElementAtOrDefault(1) ?? "#111111";
+            if (!hex.StartsWith('#')) hex = "#" + hex;
+            if (!System.Text.RegularExpressions.Regex.IsMatch(hex, "^#[0-9A-Fa-f]{6}$")) hex = "#111111";
+            yield return (name, hex.ToUpperInvariant());
+        }
+    }
+
+    private void DuplicateVariant(AdminProductVariantRequest source)
+    {
+        form.Variants.Insert(form.Variants.IndexOf(source) + 1, new AdminProductVariantRequest
+        {
+            Sku = MakeUniqueSku(source.Sku + "-COPY"),
+            Size = source.Size,
+            ColorName = source.ColorName,
+            ColorHex = source.ColorHex,
+            RegularPrice = source.RegularPrice,
+            SalePrice = source.SalePrice,
+            StockQuantity = source.StockQuantity,
+            ReservedQuantity = 0,
+            LowStockThreshold = source.LowStockThreshold,
+            ImageUrl = source.ImageUrl,
+            Barcode = null,
+            IsActive = source.IsActive
+        });
+    }
+
+    private string MakeUniqueSku(string candidate)
+    {
+        var sku = NormalizeSkuPart(candidate);
+        if (string.IsNullOrWhiteSpace(sku)) sku = "TT-SKU";
+        var finalSku = sku;
+        var counter = 2;
+        while (form.Variants.Any(v => v.Sku.Equals(finalSku, StringComparison.OrdinalIgnoreCase)))
+        {
+            finalSku = $"{sku}-{counter++}";
+        }
+        return finalSku;
+    }
+
+    private static string NormalizeSkuPart(string? value)
+    {
+        var normalized = new string((value ?? "TT").ToUpperInvariant().Select(ch => (ch >= 'A' && ch <= 'Z') || char.IsDigit(ch) ? ch : '-').ToArray());
+        while (normalized.Contains("--")) normalized = normalized.Replace("--", "-");
+        return normalized.Trim('-');
+    }
+
+    private static int AvailableStock(AdminProductVariantRequest variant) => Math.Max(0, variant.StockQuantity - variant.ReservedQuantity);
+    private static decimal EffectivePrice(AdminProductVariantRequest variant) => variant.SalePrice is > 0 && variant.SalePrice < variant.RegularPrice ? variant.SalePrice.Value : variant.RegularPrice;
+    private static int DiscountPercent(AdminProductVariantRequest variant) => variant.SalePrice is > 0 && variant.SalePrice < variant.RegularPrice && variant.RegularPrice > 0 ? (int)Math.Round((1 - (variant.SalePrice.Value / variant.RegularPrice)) * 100) : 0;
+    private static string Money(decimal value) => value <= 0 ? "—" : $"{value:N0} تومان";
+    private static string ColorDot(string? hex) => System.Text.RegularExpressions.Regex.IsMatch(hex ?? "", "^#[0-9A-Fa-f]{6}$") ? hex! : "#111111";
+    private static string VariantStatusText(AdminProductVariantRequest variant) => !variant.IsActive ? "غیرفعال" : AvailableStock(variant) <= 0 ? "ناموجود" : AvailableStock(variant) <= variant.LowStockThreshold ? "کم‌موجودی" : "آماده فروش";
+    private static string VariantStatusClass(AdminProductVariantRequest variant) => !variant.IsActive ? "danger" : AvailableStock(variant) <= 0 ? "danger" : AvailableStock(variant) <= variant.LowStockThreshold ? "warning" : "success";
+
+    private void AddSpec() => form.Specifications.Add(new AdminProductSpecificationRequest { Name = "", Value = "", SortOrder = form.Specifications.Count + 1 });
+
+    private async Task Save()
+    {
+        saving = true;
+        message = null;
+        form.Slug = SeoSlug.Normalize(form.Slug);
+        form.Seo.CanonicalPath = SeoSlug.NormalizeCanonicalPath(form.Seo.CanonicalPath, $"/product/{form.Slug}");
+        form.EmbroideryPolicy.AllowedPlacements = placementsCsv.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
+        form.EmbroideryPolicy.AllowedThreadColors = threadColorsCsv.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
+        try
+        {
+            var result = Id is null ? (await Admin.CreateProductAsync(form)).RequireUiData() : (await Admin.UpdateProductAsync(Id.Value, form)).RequireUiData();
+            Navigation.NavigateTo($"/admin/products/{result.Id}", true);
+        }
+        catch (Exception ex)
+        {
+            message = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+}
