@@ -12,9 +12,9 @@ public sealed class PermissionCheckerAttribute : Attribute, IAsyncAuthorizationF
 {
     private readonly long _permissionId;
 
-    public PermissionCheckerAttribute(int permissionId)
+    public PermissionCheckerAttribute(int permissionID)
     {
-        _permissionId = permissionId;
+        _permissionId = permissionID;
     }
 
     public PermissionCheckerAttribute(long permissionId)
